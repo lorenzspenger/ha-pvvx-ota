@@ -1,0 +1,12 @@
+pytest-homeassistant-custom-component
+ruff
+# Home Assistant's bluetooth + usb component requirements
+bleak-retry-connector
+bluetooth-adapters
+bluetooth-auto-recovery
+bluetooth-data-tools
+dbus-fast
+habluetooth
+aiousbwatcher
+serialx
+pytest-cov

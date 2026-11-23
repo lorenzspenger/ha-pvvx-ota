@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- sensor body -->
+  <rect x="40" y="40" width="392" height="392" rx="84" fill="#ECEFF1" stroke="#37474F" stroke-width="18"/>
+  <!-- LCD -->
+  <rect x="96" y="100" width="280" height="210" rx="26" fill="#C8D6CC" stroke="#37474F" stroke-width="10"/>
+  <!-- thermometer -->
+  <rect x="150" y="135" width="40" height="110" rx="20" fill="none" stroke="#263238" stroke-width="12"/>
+  <circle cx="170" cy="252" r="30" fill="#263238"/>
+  <rect x="164" y="175" width="12" height="70" fill="#263238"/>
+  <!-- droplet -->
+  <path d="M290 140 C 290 140 245 200 245 232 A 45 45 0 0 0 335 232 C 335 200 290 140 290 140 Z" fill="#263238"/>
+  <!-- update badge -->
+  <circle cx="392" cy="392" r="100" fill="#03A9F4" stroke="#FFFFFF" stroke-width="20"/>
+  <path d="M392 330 L 447 388 L 413 388 L 413 452 L 371 452 L 371 388 L 337 388 Z" fill="#FFFFFF"/>
+</svg>

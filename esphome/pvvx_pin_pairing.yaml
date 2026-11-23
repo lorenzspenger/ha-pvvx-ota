@@ -1,0 +1,142 @@
+# pvvx_pin_pairing: ESPHome package for the Home Assistant integration ha-pvvx-ota
+# https://github.com/lorenzspenger/ha-pvvx-ota
+#
+# Use it on an ESPHome Bluetooth proxy that should pair PIN-protected pvvx sensors. In the proxy's YAML:
+#
+#   packages:
+#     pvvx_pin_pairing: github://lorenzspenger/ha-pvvx-ota/esphome/pvvx_pin_pairing.yaml@main
+#   # (pin a tag instead of main once releases exist, for example @v0.23.0-beta.1)
+#
+#   esp32_ble:
+#     max_connections: 4   # the proxy's connection slots + other ble_clients + 1 for this pairer
+#
+# Needs the usual bluetooth_proxy: and api: sections in the device's own YAML, and a framework with ble_client support (ESP-IDF).
+#
+# Pairs PIN-protected pvvx sensors on demand: Home Assistant (ha-pvvx-ota) calls the API action pair_pvvx(mac, pin)
+# on a Bluetooth proxy; one generic ble_client ("pvvx_pairer") connects to that MAC, answers the passkey request with
+# that PIN and drops the link. The bond (LTK) stays in this ESP32's flash, so afterwards Home Assistant's own proxy
+# connections to the sensor encrypt with it. The PIN lives in a RAM-only global and is zeroed again, never logged.
+#
+# The device that includes this package must have bluetooth_proxy and, in esp32_ble, room for one more connection:
+#   esp32_ble:
+#     max_connections: <proxy slots + other ble_clients + 1>
+# (the package sets io_capability and auth_req_mode itself; they affect every pairing this ESP32 does: peripherals
+# without input/output still pair Just Works).
+esp32_ble:
+  io_capability: keyboard_only
+  auth_req_mode: sc_mitm_bond
+
+globals:
+  - id: pvvx_pair_asked
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: pvvx_pair_connected
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: pvvx_pin
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+binary_sensor:
+  - platform: template
+    id: pvvx_pairer_busy
+    name: "pvvx pairer busy"
+    icon: mdi:bluetooth-connect
+    entity_category: diagnostic
+    # ON while pair_pvvx holds the pairer (connecting, pairing, disconnecting). Home Assistant waits for OFF before it connects to
+    # the sensor itself: a sensor takes one connection, and the pairer's disconnect would tear down a link Home Assistant reused.
+    # Its state is unknown until the first pairing; unknown counts as idle.
+
+text_sensor:
+  - platform: template
+    id: pvvx_pair_result
+    name: "pvvx pair result"
+    icon: mdi:bluetooth-settings
+    entity_category: diagnostic
+    # "pairing" while it runs, then "passkey answered" (the sensor asked for the PIN and got it), "no passkey asked" (the pairer
+    # reached the sensor but it never asked: it paired without a PIN prompt, Just Works, and the key it gives is refused) or
+    # "no connection" (the sensor was not connectable; Home Assistant retries that).
+
+ble_client:
+  - mac_address: "00:00:00:00:00:01"   # placeholder; pair_pvvx sets the real address at run time
+    id: pvvx_pairer
+    auto_connect: false
+    on_connect:
+      then:
+        - lambda: 'id(pvvx_pair_connected) = true;'
+        - logger.log:
+            level: INFO
+            format: "pvvx pairer: connected to %s"
+            args: ['id(pvvx_pairer)->address_str()']
+    on_disconnect:
+      then:
+        - logger.log:
+            level: INFO
+            format: "pvvx pairer: disconnected from %s"
+            args: ['id(pvvx_pairer)->address_str()']
+    on_passkey_request:
+      then:
+        - lambda: 'id(pvvx_pair_asked) = true;'
+        - logger.log:
+            level: INFO
+            format: "pvvx pairer: passkey requested, answering with the PIN from Home Assistant"
+        - ble_client.passkey_reply:
+            id: pvvx_pairer
+            passkey: !lambda 'return id(pvvx_pin);'
+
+api:
+  actions:
+    - action: pair_pvvx
+      variables:
+        mac: string
+        pin: int
+      then:
+        - if:
+            condition:
+              lambda: |-
+                if (id(pvvx_pairer_busy)->state) return false;  // one pairing at a time: the single pairer has one address and PIN
+                if (pin < 1 || pin > 999999) return false;
+                unsigned b[6];
+                if (sscanf(mac.c_str(), "%x:%x:%x:%x:%x:%x", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) != 6) return false;
+                uint64_t addr = 0;
+                for (int i = 0; i < 6; i++) addr = (addr << 8) | (b[i] & 0xFF);
+                id(pvvx_pin) = (uint32_t) pin;
+                id(pvvx_pairer)->set_address(addr);
+                // forget any old bond first (a stale or Just Works one makes the sensor refuse with "insufficient authentication"
+                // and pairing then reuses it without asking for the passkey): every pair_pvvx makes a fresh PIN pairing
+                esp_bd_addr_t bda;
+                for (int i = 0; i < 6; i++) bda[i] = (addr >> (8 * (5 - i))) & 0xFF;
+                esp_ble_remove_bond_device(bda);
+                id(pvvx_pair_connected) = false;
+                id(pvvx_pair_asked) = false;
+                return true;
+            then:
+              - text_sensor.template.publish:
+                  id: pvvx_pair_result
+                  state: "pairing"
+              - binary_sensor.template.publish:
+                  id: pvvx_pairer_busy
+                  state: ON
+              - ble_client.connect: pvvx_pairer
+              # the hold counts from the link being open (opening can take 5 s or more), then pairing takes about 15 s
+              - wait_until:
+                  condition:
+                    lambda: 'return id(pvvx_pairer)->connected();'
+                  timeout: 30s
+              - delay: 20s
+              - ble_client.disconnect: pvvx_pairer
+              - delay: 2s
+              - lambda: 'id(pvvx_pin) = 0;'
+              - text_sensor.template.publish:
+                  id: pvvx_pair_result
+                  state: !lambda 'return id(pvvx_pair_connected) ? (id(pvvx_pair_asked) ? "passkey answered" : "no passkey asked") : "no connection";'
+              - binary_sensor.template.publish:
+                  id: pvvx_pairer_busy
+                  state: OFF
+            else:
+              - logger.log:
+                  level: WARN
+                  format: "pvvx pairer: busy, or bad MAC or PIN (PIN must be 1..999999)"

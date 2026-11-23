@@ -1,0 +1,75 @@
+# Integration quality scale (https://developers.home-assistant.io/docs/core/integration-quality-scale/).
+# Custom integrations are not graded; this file tracks where the integration stands against the bronze and silver rules.
+rules:
+  # Bronze
+  action-setup:
+    status: exempt
+    comment: Services are entity services registered in the update platform (async_register_entity_service).
+  appropriate-polling:
+    status: done
+    comment: No polling loop; the installed version is read at startup, after a flash and every 12 h, firmware catalog cached.
+  brands:
+    status: done
+    comment: The integration ships custom_components/pvvx_ota/brand/ (icon.png, icon@2x.png), which Home Assistant serves for custom integrations; hassfest accepts it.
+  common-modules:
+    status: done
+  config-flow-test-coverage:
+    status: done
+  config-flow:
+    status: done
+  dependency-transparency:
+    status: done
+    comment: No external requirements; Bluetooth comes from HA's bluetooth stack.
+  docs-actions:
+    status: done
+  docs-high-level-description:
+    status: done
+  docs-installation-instructions:
+    status: done
+  docs-removal-instructions:
+    status: done
+    comment: README section Removal.
+  entity-event-setup:
+    status: done
+  entity-unique-id:
+    status: done
+  has-entity-name:
+    status: done
+  runtime-data:
+    status: done
+    comment: The sensor's ConfigStore is entry.runtime_data (typed ConfigEntry alias); only the shared lock, queue and firmware source live in hass.data.
+  test-before-configure:
+    status: done
+    comment: The flow connects and reads the config block before creating the entry.
+  test-before-setup:
+    status: done
+    comment: Setup checks that a connectable scanner has heard the sensor (ConfigEntryNotReady otherwise); the config flow already authenticated. The first read runs in the background.
+  unique-config-entry:
+    status: done
+  # Silver
+  action-exceptions:
+    status: done
+  config-entry-unloading:
+    status: done
+  docs-configuration-parameters:
+    status: done
+  docs-installation-parameters:
+    status: done
+  entity-unavailable:
+    status: done
+  integration-owner:
+    status: done
+  log-when-unavailable:
+    status: done
+  parallel-updates:
+    status: done
+    comment: PARALLEL_UPDATES = 1 on the Bluetooth platforms (matches the shared lock); the update platform is 0 because its firmware queue needs concurrent calls to queue them.
+  reconfiguration-flow:
+    status: done
+    comment: A PIN-bonded sensor can store or change its PIN (reconfigure); other sensors have no settings to reconfigure.
+  reauthentication-flow:
+    status: done
+    comment: A PIN-bonded sensor whose bond is dead and has no stored PIN starts a reauth flow that asks for the PIN, pairs again through a proxy and stores it.
+  test-coverage:
+    status: done
+    comment: Branch coverage 95 % or more for every module, enforced in the Tests workflow (scripts/check_module_coverage.py).

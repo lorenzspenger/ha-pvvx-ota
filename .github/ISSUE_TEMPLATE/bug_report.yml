@@ -1,0 +1,75 @@
+name: Bug report
+description: Something does not work (update, flash, settings, pairing)
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing the beta. Please do not post PINs or bindkeys. The diagnostics file redacts them, but check the log you paste.
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.11.0"
+    validations:
+      required: true
+  - type: input
+    id: integration_version
+    attributes:
+      label: Integration version
+      description: Settings > Devices & services > pvvx Thermometer OTA, or HACS.
+      placeholder: "0.23.0b1"
+    validations:
+      required: true
+  - type: input
+    id: sensor
+    attributes:
+      label: Sensor board and firmware version
+      placeholder: "LYWSD03MMC, pvvx 5.7 to 5.9"
+    validations:
+      required: true
+  - type: dropdown
+    id: proxy_type
+    attributes:
+      label: Bluetooth path used
+      options:
+        - ESP32 ESPHome Bluetooth proxy (ESP-IDF)
+        - ESP32 ESPHome Bluetooth proxy (Arduino)
+        - Local Bluetooth adapter
+        - Several of these
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: esphome_version
+    attributes:
+      label: ESPHome version of the proxy (if any)
+  - type: checkboxes
+    id: pin
+    attributes:
+      label: Does the sensor have a PIN set?
+      options:
+        - label: Yes, and I use the pvvx_pin_pairing package on a proxy
+        - label: Yes, but without the package
+        - label: No
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Settings > Devices & services > pvvx Thermometer OTA > the sensor's entry > ⋮ > Download diagnostics. Drag the file into this box.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Relevant log
+      description: Settings > System > Logs, lines containing `pvvx_ota`. For flash problems add the proxy's own log if you can.
+      render: text
+    validations:
+      required: true

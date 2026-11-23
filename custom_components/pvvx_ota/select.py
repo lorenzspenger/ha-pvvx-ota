@@ -1,0 +1,144 @@
+"""Select entities: TX power, temperature unit, smiley, display content, advertising type."""
+
+from __future__ import annotations
+
+from homeassistant.components.select import SelectEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+from . import config as cfgmod
+from .entity import PvvxConfigEntity, get_store, wanted
+
+PARALLEL_UPDATES = 1  # one Bluetooth operation at a time, like the shared lock
+
+
+UNITS = {"°C": 0, "°F": 1}
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, add: AddConfigEntryEntitiesCallback) -> None:
+    store = get_store(hass, entry)
+    ents: list[PvvxConfigEntity] = []
+    if wanted(store, "rf_tx_power"):
+        ents.append(TxPowerSelect(hass, entry))
+    if wanted(store, "temp_f"):
+        ents.append(UnitSelect(hass, entry))
+    if wanted(store, "smiley"):
+        ents.append(SmileySelect(hass, entry))
+    if wanted(store, "screen_type"):
+        ents.append(ScreenTypeSelect(hass, entry))
+    if wanted(store, "adv_type"):
+        ents.append(AdvTypeSelect(hass, entry))
+    add(ents)
+
+
+def _dbm(raw: int) -> str:
+    return f"{cfgmod.TX_POWER[raw]:+.2f} dBm"
+
+
+class TxPowerSelect(PvvxConfigEntity, SelectEntity):
+    field_key = "rf_tx_power"
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        super().__init__(hass, entry, "rf_tx_power", "TX power", enabled_default=False)
+
+    def _current_label(self) -> str | None:
+        v = self.store.value("rf_tx_power")
+        if v is None:
+            return None
+        return _dbm(v) if v in cfgmod.TX_POWER else f"raw {v}"  # keep a value we do not list instead of snapping it
+
+    @property
+    def options(self) -> list[str]:
+        opts = [_dbm(r) for r in sorted(cfgmod.TX_POWER, key=lambda r: cfgmod.TX_POWER[r])]
+        cur = self._current_label()
+        return opts + [cur] if cur and cur not in opts else opts
+
+    @property
+    def current_option(self) -> str | None:
+        return self._current_label()
+
+    async def async_select_option(self, option: str) -> None:
+        by_label = {_dbm(r): r for r in cfgmod.TX_POWER}
+        if option not in by_label:
+            return  # the "raw N" entry only reports the current value
+        await self.store.async_request({"rf_tx_power": by_label[option]})
+
+
+class UnitSelect(PvvxConfigEntity, SelectEntity):
+    field_key = "temp_f"
+    _attr_options = list(UNITS)
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        super().__init__(hass, entry, "temp_unit_display", "Display temperature unit", enabled_default=False)
+
+    @property
+    def current_option(self) -> str | None:
+        v = self.store.value("temp_f")
+        return None if v is None else "°F" if v else "°C"
+
+    async def async_select_option(self, option: str) -> None:
+        await self.store.async_request({"temp_f": UNITS[option]})
+
+
+class SmileySelect(PvvxConfigEntity, SelectEntity):
+    field_key = "smiley"
+    _attr_options = cfgmod.SMILEYS
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        super().__init__(hass, entry, "smiley", "Smiley", enabled_default=False)
+
+    @property
+    def current_option(self) -> str | None:
+        v = self.store.value("smiley")
+        return None if v is None else cfgmod.SMILEYS[v]
+
+    async def async_select_option(self, option: str) -> None:
+        await self.store.async_request({"smiley": cfgmod.SMILEYS.index(option)})
+
+
+class ScreenTypeSelect(PvvxConfigEntity, SelectEntity):
+    """What the MJWSD05MMC shows. "external" (5) is only a state the sensor can report: it needs data pushed over
+    the external-display command, which this integration never sends, so it is not offered as a choice."""
+
+    field_key = "screen_type"
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        super().__init__(hass, entry, "screen_type", "Display content", enabled_default=False)
+
+    def _current_label(self) -> str | None:
+        v = self.store.value("screen_type")
+        return None if v is None else cfgmod.SCREEN_TYPES[v] if v < len(cfgmod.SCREEN_TYPES) else f"raw {v}"
+
+    @property
+    def options(self) -> list[str]:
+        opts = cfgmod.SCREEN_TYPES[:-1]
+        cur = self._current_label()
+        return opts + [cur] if cur and cur not in opts else opts
+
+    @property
+    def current_option(self) -> str | None:
+        return self._current_label()
+
+    async def async_select_option(self, option: str) -> None:
+        if option in cfgmod.SCREEN_TYPES[:-1]:
+            await self.store.async_request({"screen_type": cfgmod.SCREEN_TYPES.index(option)})
+
+
+class AdvTypeSelect(PvvxConfigEntity, SelectEntity):
+    """Disabled by default. Anything but BTHome stops HA's bthome integration from receiving this sensor's data."""
+
+    field_key = "adv_type"
+    _attr_options = cfgmod.ADV_TYPES
+    warning = "Anything but BTHome stops Home Assistant's BTHome integration from receiving this sensor's data."
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        super().__init__(hass, entry, "adv_type", "Advertising type", enabled_default=False)
+
+    @property
+    def current_option(self) -> str | None:
+        v = self.store.value("adv_type")
+        return None if v is None else cfgmod.ADV_TYPES[v]
+
+    async def async_select_option(self, option: str) -> None:
+        await self.store.async_request({"adv_type": cfgmod.ADV_TYPES.index(option)})

@@ -1,0 +1,274 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "description": "Wähle einen pvvx-Sensor, der aktualisiert werden soll.",
+        "data": {
+          "address": "Gerät"
+        }
+      },
+      "bluetooth_confirm": {
+        "description": "{name} hinzufügen? Dazu wird einmal per Bluetooth verbunden, um zu prüfen, ob pvvx-Firmware läuft, und um Board und Version auszulesen."
+      },
+      "pin": {
+        "title": "PIN erforderlich",
+        "description": "{name} hat eine PIN und noch kein Proxy hat sich mit ihm gekoppelt. Gib die PIN ein: Home Assistant übergibt sie einem Bluetooth-Proxy, der die Koppel-Aktion anbietet (der Proxy koppelt mit dem Sensor und behält die Kopplung). Das dauert etwa 25 Sekunden. Die PIN wird in diesem Eintrag gespeichert, damit die Kopplung wiederholt werden kann, falls der Proxy sie verliert.",
+        "data": {
+          "pin": "PIN (1 bis 999999)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "PIN erneut erforderlich",
+        "description": "{name} verweigert die Verbindung und für ihn ist keine PIN gespeichert (oder die gespeicherte funktioniert nicht mehr), daher ging die Kopplung mit dem Bluetooth-Proxy verloren. Gib die PIN ein: Home Assistant übergibt sie einem Proxy, der die Koppel-Aktion anbietet und den Sensor neu koppelt. Das dauert etwa 25 Sekunden.",
+        "data": {
+          "pin": "PIN (1 bis 999999)"
+        }
+      },
+      "reconfigure": {
+        "title": "PIN speichern",
+        "description": "Speichere die PIN von {name}, damit Home Assistant ihn selbst neu koppeln kann, falls der Proxy die Kopplung verliert. Die Kopplung wird jetzt über einen Proxy wiederholt, der die Koppel-Aktion anbietet; das dauert etwa 25 Sekunden.",
+        "data": {
+          "pin": "PIN (1 bis 999999)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Das Gerät ist bereits eingerichtet",
+      "no_devices_found": "Keine pvvx-Sensoren in der Nähe gefunden",
+      "not_pvvx": "Dieses Gerät hat nicht wie pvvx-Custom-Firmware geantwortet (vielleicht ein anderes BTHome-Gerät oder ATC1441-Firmware).",
+      "pin_protected": "Dieser Sensor hat eine PIN gesetzt und kein Proxy kann ihn koppeln (kein ESPHome-Proxy, der ihn hört, bietet die Aktion pair_pvvx an, und keiner hat eine Kopplung mit ihm), daher wurde er nicht hinzugefügt und wird jetzt ignoriert, damit er nicht erneut angeboten wird. Füge einem Proxy das Koppel-Paket hinzu (README: Pairing a PIN sensor) und hebe das Ignorieren dann auf der Integrationsseite auf (Ignorierte Geräte). Oder entferne die PIN mit TelinkMiFlasher.",
+      "reauth_successful": "Die PIN wurde gespeichert und der Sensor ist neu gekoppelt.",
+      "reconfigure_successful": "Die PIN wurde gespeichert.",
+      "no_pin_sensor": "Dieser Sensor hat keine PIN-Kopplung; es gibt nichts zu konfigurieren."
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum Sensor nicht möglich (das liegt nicht an einer PIN: die Verbindung selbst kam innerhalb von etwa 25 Sekunden nicht zustande). pvvx-Sensoren sind nur zeitweise verbindbar; auch ein schwaches Signal oder ein ausgelasteter Proxy kann die Ursache sein. Bitte eine Minute warten und es erneut versuchen.",
+      "pairing_required": "Dieser Sensor hat eine PIN gesetzt. Sensoren mit PIN werden von dieser Integration nicht unterstützt und wurden daher nicht hinzugefügt. Entferne die PIN mit TelinkMiFlasher, um den Sensor zu nutzen. Rohfehler: {error}",
+      "unexpected": "Unerwarteter Fehler: {error}. Den Traceback findest du im Home-Assistant-Log (pvvx_ota).",
+      "pin_wrong": "Der Proxy hat mit der PIN gekoppelt, aber {name} verweigert die Verbindung weiterhin. Das Problem liegt am Sensor, meist ein alter Kopplungseintrag oder alte Firmware. Einmalig mit TelinkMiFlasher ({flasher_url}) in der Nähe des Sensors beheben: 1) verbinden und die Firmware auf die neueste Version aktualisieren, 2) die PIN auf 0 setzen und speichern, dann die PIN wieder setzen (das leert den Kopplungsspeicher des Sensors), 3) den Sensor hier erneut hinzufügen.",
+      "no_pairing_proxy": "Kein Proxy, der diesen Sensor hört, bietet die Koppel-Aktion noch an. Siehe README, Abschnitt Pairing a PIN sensor.",
+      "pair_connect_failed": "Der Proxy konnte sich zum Koppeln nicht mit dem Sensor verbinden (pvvx-Sensoren sind nur zeitweise verbindbar). Bitte gleich noch einmal versuchen.",
+      "pair_no_passkey": "{name} hat ohne PIN-Abfrage gekoppelt und verweigert die Verbindung weiterhin. Das Problem liegt am Sensor, meist ein alter Kopplungseintrag oder alte Firmware. Einmalig mit TelinkMiFlasher ({flasher_url}) in der Nähe des Sensors beheben: 1) verbinden und die Firmware auf die neueste Version aktualisieren, 2) die PIN auf 0 setzen und speichern, dann die PIN wieder setzen (das leert den Kopplungsspeicher des Sensors), 3) den Sensor hier erneut hinzufügen."
+    },
+    "progress": {
+      "pairing": "{name} wird über seinen Proxy gekoppelt und geprüft. Das dauert etwa 30 bis 40 Sekunden."
+    }
+  },
+  "services": {
+    "flash_file": {
+      "name": "Lokale Firmware-Datei flashen",
+      "description": "Flasht ein Firmware-Image aus einer lokalen Datei. Der Dateiname muss BOARD_vNN.bin lauten und zum Board des Geräts passen.",
+      "fields": {
+        "path": {
+          "name": "Pfad",
+          "description": "Pfad zur .bin-Datei (muss in einem erlaubten Verzeichnis liegen)."
+        },
+        "force": {
+          "name": "Erzwingen",
+          "description": "Auch flashen, wenn die Batteriespannung unter 2,5 V liegt."
+        }
+      }
+    },
+    "flash_latest": {
+      "name": "Neueste Version flashen",
+      "description": "Flasht das neueste Release-Image für diesen Sensor, auch wenn er schon aktuell ist. Dient zum Abstimmen der Flash-Geschwindigkeit.",
+      "fields": {
+        "status_every": {
+          "name": "Statusintervall",
+          "description": "Anzahl Blöcke zwischen zwei Statusabfragen (Standard 8). Größer ist schneller, wenn Sensor und Proxy mithalten; zu groß lässt verlorene Blöcke den Flash abbrechen."
+        },
+        "force": {
+          "name": "Erzwingen",
+          "description": "Auch flashen, wenn die Batteriespannung unter 2,5 V liegt."
+        }
+      }
+    },
+    "set_encryption": {
+      "name": "Advert-Verschlüsselung setzen",
+      "description": "Schaltet verschlüsselte Adverts ein oder aus. Beim Einschalten wird ein Schlüssel im Sensor gespeichert (zufällig erzeugt, wenn du keinen angibst) und nur in der Antwort der Aktion zurückgegeben. Der BTHome-Eintrag des Sensors in Home Assistant braucht danach diesen Schlüssel (diese Integration ändert ihn nicht), sonst gehen seine Daten für HA verloren.",
+      "fields": {
+        "enable": {
+          "name": "Aktivieren",
+          "description": "An oder aus."
+        },
+        "key": {
+          "name": "Schlüssel",
+          "description": "Optional 32 Hex-Zeichen (16 Byte). Wird erzeugt, wenn leer."
+        }
+      }
+    },
+    "set_pin": {
+      "name": "PIN setzen",
+      "description": "WARNUNG: Diese Integration unterstützt keine Sensoren mit PIN. Mit gesetzter PIN kann sie sich nicht mehr mit dem Sensor verbinden (auch die Proxys von Home Assistant können den Passkey nicht eingeben); nur TelinkMiFlasher kann die PIN entfernen. 0 schaltet die PIN aus. Die PIN wird weder gespeichert noch protokolliert.",
+      "fields": {
+        "pin": {
+          "name": "PIN",
+          "description": "Bis zu 6 Ziffern, 0 = aus."
+        },
+        "confirm": {
+          "name": "Bestätigen",
+          "description": "Muss true sein, sonst verweigert die Aktion."
+        }
+      }
+    }
+  },
+  "issues": {
+    "adv_type_changed": {
+      "title": "{name}: Advertising-Typ ist nicht BTHome",
+      "description": "Der Sensor sendet nicht mehr im BTHome-Format, daher erhält die BTHome-Integration von Home Assistant keine Daten mehr von ihm. Stelle den Advertising-Typ wieder auf BTHome (die Entität ist standardmäßig deaktiviert; aktiviere sie) oder nutze TelinkMiFlasher."
+    },
+    "encryption_changed": {
+      "title": "{name}: Advert-Verschlüsselung geändert",
+      "description": "Die Verschlüsselung der Adverts des Sensors wurde umgeschaltet. Der BTHome-Eintrag dieses Sensors in Home Assistant muss den passenden Bindkey haben (oder keinen, wenn die Verschlüsselung aus ist), sonst gehen die Daten verloren. Diese Integration ändert den Eintrag nicht."
+    },
+    "pin_bond_lost": {
+      "title": "{name}: Kopplung verloren, am Proxy neu koppeln",
+      "description": "Dieser Sensor hat eine PIN und wurde mit einer Kopplung in einem ESPHome-Proxy hinzugefügt, verweigert die Verbindung aber jetzt auch nach der Verschlüsselung. Wahrscheinlich hat der Proxy die Kopplung verloren (Flash gelöscht, NVS gelöscht) oder die PIN wurde geändert. Drücke am Proxy erneut die Koppeln-Taste (README: Pairing a PIN sensor); dieses Problem verschwindet nach dem nächsten erfolgreichen Lesen."
+    },
+    "pin_set": {
+      "title": "{name}: PIN wurde gesetzt",
+      "description": "Diese Integration unterstützt keine Sensoren mit PIN und kann sich daher nicht mehr mit diesem Sensor verbinden. Entferne die PIN mit TelinkMiFlasher, um ihn wieder zu nutzen."
+    },
+    "pin_pairing_failed": {
+      "title": "{name}: konnte nicht mit seiner PIN gekoppelt werden",
+      "description": "Der Proxy hat mit der PIN gekoppelt, aber der Sensor ({address}) verweigert die Verbindung weiterhin und wurde daher nicht hinzugefügt. Das Problem liegt am Sensor, meist ein alter Kopplungseintrag oder alte Firmware. Einmalig mit TelinkMiFlasher ({flasher_url}) in der Nähe des Sensors beheben: 1) verbinden und die Firmware auf die neueste Version aktualisieren, 2) die PIN auf 0 setzen und speichern, dann die PIN wieder setzen (das leert den Kopplungsspeicher des Sensors), 3) den Sensor hier erneut hinzufügen. Dieser Hinweis verschwindet, sobald der Sensor hinzugefügt wurde."
+    },
+    "reset_defaults": {
+      "title": "{name}: Einstellungen auf Standard zurückgesetzt",
+      "description": "Die Konfiguration des Sensors wurde zurückgesetzt. Advertising-Typ und Verschlüsselung können sich geändert haben, prüfe daher den BTHome-Eintrag in Home Assistant. Die vorherigen Einstellungen lassen sich mit der Schaltfläche „Vorherige Einstellungen wiederherstellen“ zurückschreiben (außer dem Verschlüsselungs-Flag)."
+    },
+    "encryption_restore_failed": {
+      "title": "{name}: Verschlüsselung wurde nicht wieder eingeschaltet",
+      "description": "Der Flash hat das BTHome-Verschlüsselungs-Flag des Sensors gelöscht, und es ließ sich nicht automatisch wieder einschalten (vielleicht hat der Sensor den Schlüssel nicht mehr). Solange kann der BTHome-Eintrag von Home Assistant, der den Schlüssel kennt, den Sensor nicht lesen. Schalte sie mit der Aktion pvvx_ota.set_encryption und deinem bisherigen Schlüssel wieder ein (Entwicklerwerkzeuge > Aktionen)."
+    },
+    "settings_differ_after_flash": {
+      "title": "{name}: Einstellungen weichen von vor dem Flash ab",
+      "description": "Der Flash hat einige Einstellungen des Sensors geändert. Sie werden nicht automatisch zurückgeschrieben: Drücke auf der Geräteseite des Sensors „Vorherige Einstellungen wiederherstellen“, wenn du sie zurückhaben möchtest."
+    },
+    "flash_failed": {
+      "title": "{name}: Firmware-Update fehlgeschlagen",
+      "description": "Der letzte Firmware-Vorgang an diesem Sensor ist fehlgeschlagen: {error}. Der Sensor läuft weiter mit der alten Firmware (eine abgebrochene Übertragung wird nicht übernommen). Stelle einen Bluetooth-Proxy näher an den Sensor, prüfe die Batterie und versuche es erneut; die Meldung verschwindet nach dem nächsten erfolgreichen Flash von selbst."
+    }
+  },
+  "entity": {
+    "button": {
+      "refresh_config": {
+        "name": "Konfiguration aktualisieren"
+      },
+      "reflash_firmware": {
+        "name": "Firmware neu flashen"
+      },
+      "restore_config": {
+        "name": "Vorherige Einstellungen wiederherstellen"
+      },
+      "reset_defaults": {
+        "name": "Einstellungen auf Standard zurücksetzen"
+      },
+      "reboot_sensor": {
+        "name": "Sensor neu starten"
+      },
+      "sync_clock": {
+        "name": "Uhrzeit synchronisieren"
+      }
+    },
+    "number": {
+      "adv_interval": {
+        "name": "Sendeintervall (Advertising)"
+      },
+      "measure_interval": {
+        "name": "Messintervall"
+      },
+      "temp_offset": {
+        "name": "Temperatur-Offset"
+      },
+      "humi_offset": {
+        "name": "Luftfeuchte-Offset"
+      }
+    },
+    "select": {
+      "rf_tx_power": {
+        "name": "Sendeleistung"
+      },
+      "temp_unit_display": {
+        "name": "Temperatureinheit im Display"
+      },
+      "smiley": {
+        "name": "Smiley"
+      },
+      "adv_type": {
+        "name": "Advertising-Typ"
+      },
+      "screen_type": {
+        "name": "Display-Anzeige"
+      }
+    },
+    "switch": {
+      "show_battery": {
+        "name": "Batterie im Display anzeigen"
+      },
+      "comfort_smiley": {
+        "name": "Komfort-Smiley"
+      },
+      "screen_off": {
+        "name": "Display aus"
+      },
+      "longrange": {
+        "name": "Long-Range-PHY"
+      },
+      "bt5phy": {
+        "name": "BT5-PHY"
+      },
+      "beta_firmware": {
+        "name": "Beta-Firmware"
+      },
+      "x100": {
+        "name": "Zwei Nachkommastellen im Display"
+      },
+      "time_am_pm": {
+        "name": "12-Stunden-Uhr"
+      },
+      "date_ddmm": {
+        "name": "Datum als TT/MM"
+      },
+      "show_weekday": {
+        "name": "Wochentag anzeigen"
+      }
+    },
+    "sensor": {
+      "hw_ver": {
+        "name": "Hardware-Versions-ID"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Optionen des pvvx-Sensors",
+        "description": "Einstellungen für diesen Sensor.",
+        "data": {
+          "min_battery_v": "Mindest-Batteriespannung für einen Flash",
+          "auto_clock_sync": "Uhrzeit automatisch setzen",
+          "auto_restore_encryption": "BTHome-Verschlüsselung nach einem Flash wieder einschalten",
+          "device_poll_interval": "Wie oft die Version des Sensors gelesen wird"
+        },
+        "data_description": {
+          "min_battery_v": "Unterhalb dieser Spannung wird der Flash verweigert (flash_latest und flash_file können das mit force übergehen).",
+          "auto_clock_sync": "Prüft die Uhr des Sensors in ohnehin bestehenden Verbindungen und stellt sie, wenn sie mehr als 5 s abweicht.",
+          "auto_restore_encryption": "Ein Flash löscht das Verschlüsselungs-Flag; war es an, wird es wieder eingeschaltet (der Schlüssel bleibt im Sensor).",
+          "device_poll_interval": "Eine Bluetooth-Verbindung pro Sensor. Die Firmware-Liste und die Update-Angebote werden getrennt aktualisiert (alle 12 Stunden, ohne Bluetooth); ein Flash oder die Aktualisieren-Taste lesen den Sensor ohnehin."
+        }
+      }
+    }
+  },
+  "selector": {
+    "poll_interval": {
+      "options": {
+        "1d": "Jeden Tag",
+        "3d": "Alle 3 Tage",
+        "7d": "Alle 7 Tage",
+        "never": "Nie (nur auf Anforderung und nach einem Flash)"
+      }
+    }
+  }
+}

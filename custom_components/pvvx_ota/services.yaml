@@ -1,0 +1,67 @@
+flash_file:
+  target:
+    entity:
+      integration: pvvx_ota
+      domain: update
+  fields:
+    path:
+      required: true
+      example: /config/firmware/MHO_C401_v59.bin
+      selector:
+        text:
+    force:
+      default: false
+      selector:
+        boolean:
+
+flash_latest:
+  target:
+    entity:
+      integration: pvvx_ota
+      domain: update
+  fields:
+    status_every:
+      default: 8
+      selector:
+        number:
+          min: 1
+          max: 64
+          mode: box
+    force:
+      default: false
+      selector:
+        boolean:
+
+set_encryption:
+  target:
+    entity:
+      integration: pvvx_ota
+      domain: update
+  fields:
+    enable:
+      required: true
+      selector:
+        boolean:
+    key:
+      required: false
+      selector:
+        text:
+
+set_pin:
+  target:
+    entity:
+      integration: pvvx_ota
+      domain: update
+  fields:
+    pin:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 999999
+          mode: box
+    confirm:
+      required: true
+      default: false
+      selector:
+        boolean:
