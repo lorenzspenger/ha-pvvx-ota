@@ -46,3 +46,14 @@ Protocol code lives in `custom_components/pvvx_ota/ota.py` (no HA imports), port
 Home Assistant has no supported way to say "connect through this proxy" or to ask which proxy a connection runs through, and a PIN sensor only answers through the proxy that holds its bond. All private access is in one module, [`bt_internals.py`](../custom_components/pvvx_ota/bt_internals.py): a client subclass that replaces habluetooth's `_async_get_best_available_backend_and_device` with "the paths of the paired scanner only", and a read of the connection's `_connected_scanner`. If a Home Assistant release removes either, the integration logs one warning and connects the normal way; a connection to a PIN-bonded sensor whose proxy cannot be verified is refused before anything is sent. `tests/test_pin_bond.py` simulates both attributes missing.
 
 Some PIN sensors may still refuse the first protected write after a correct pairing; see the [known issue](pin-sensors.md#known-issue-the-sensor-refuses-after-a-correct-pairing).
+
+### Result of candidate A: clearing the PIN over the pairing link (tested on a sensor that refused every re-encrypted link)
+- `pvvx_clear_pin` (package action) paired through one proxy (passkey answered, `auth complete` about 10 s after the link opened) and 5 s later wrote
+  `70 00 00 00 00` to 0x1F1F on that same link. ESPHome logged no write error and the link was closed 3 s later; the proxy reported `pin clear sent`.
+- Afterwards the sensor was added in Home Assistant through a plain, unencrypted connection and no PIN step: the PIN was gone and the pairing table was
+  empty (the zero-to-non-zero toggle erased it, as in the firmware source). **A write on the freshly authenticated pairing link is accepted although
+  the same sensor refused every later re-encrypted link (status 5).** That fits hypothesis 2 above (the live pairing result is honoured, the record
+  reloaded from flash is not) and it is the remote equivalent of "PIN 0, then PIN again" in TelinkMiFlasher.
+- The `70 01` reply itself was not captured (no notification subscription on that link); success was judged from the missing write error and from the sensor
+  answering unencrypted afterwards. Battery was 83 % (above the ~40 % limit pvvx names for flash writes).
+- Not yet tried: setting the PIN again and then pairing on the clean table (the second half of the procedure).
