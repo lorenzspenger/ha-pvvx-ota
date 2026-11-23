@@ -583,7 +583,7 @@ async def test_connect_logs_the_link(hass: HomeAssistant, enable_bluetooth, capl
 
     from custom_components.pvvx_ota import device
 
-    caplog.set_level("INFO")
+    caplog.set_level("DEBUG")
 
     class C(SimpleNamespace):
         async def disconnect(self):

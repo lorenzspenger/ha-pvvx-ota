@@ -118,7 +118,7 @@ async def async_pair(
     pair result" says "no connection": the sensor was not connectable) the call is repeated once, then PairConnectError. Returns
     that result ("passkey answered", "no passkey asked", ...) or None if the proxy does not report one."""
     for attempt in range(PAIR_ATTEMPTS):
-        _LOGGER.info("Asking %s to pair with %s", proxy.name, address)
+        _LOGGER.debug("Asking %s to pair with %s", proxy.name, address)
         try:
             await hass.services.async_call("esphome", proxy.service, {"mac": address, "pin": pin}, blocking=True)
         except HomeAssistantError:
@@ -127,7 +127,7 @@ async def async_pair(
             raise HomeAssistantError(f"Could not call esphome.{proxy.service}: {type(err).__name__}") from err
         busy = busy_entity(hass, proxy.name)
         if busy is None:
-            _LOGGER.info("%s has no pairer-busy entity, waiting %.0f s", proxy.name, wait)
+            _LOGGER.debug("%s has no pairer-busy entity, waiting %.0f s", proxy.name, wait)
             await asyncio.sleep(wait)
             return None
         await _wait_until_idle(hass, busy)
@@ -135,7 +135,7 @@ async def async_pair(
         state = None if result is None else hass.states.get(result)
         if state is None or state.state != "no connection":
             return None if state is None else state.state
-        _LOGGER.info(
+        _LOGGER.debug(
             "%s could not reach %s for pairing (attempt %d of %d)", proxy.name, address, attempt + 1, PAIR_ATTEMPTS
         )
     raise PairConnectError(

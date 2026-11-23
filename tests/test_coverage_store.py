@@ -148,7 +148,7 @@ async def test_pin_range_is_checked(setup):
 async def test_reboot_watch_logs_the_return_or_the_silence(setup, caplog, monkeypatch):
     import logging
 
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.DEBUG)
     hass, client, entry, store = setup
 
     async def no_wait(_):

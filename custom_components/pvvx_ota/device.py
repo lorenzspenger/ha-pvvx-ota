@@ -139,15 +139,15 @@ async def encrypt_link(client, name: str, t0: float) -> None:
     Request (about 1 s after connect, encryption done after about 2 s) ENCRYPT_SETTLE seconds. The extra time is capped."""
     pair = getattr(client, "pair", None)
     if pair is None:
-        _LOGGER.info("%s: no pair() on this client, waiting for the sensor's Security Request", name)
+        _LOGGER.debug("%s: no pair() on this client, waiting for the sensor's Security Request", name)
     else:
         try:
             async with asyncio.timeout(ENCRYPT_PAIR_TIMEOUT):
                 await pair()
-            _LOGGER.info("%s: link encrypted by pair() %.1f s after connect", name, time.monotonic() - t0)
+            _LOGGER.debug("%s: link encrypted by pair() %.1f s after connect", name, time.monotonic() - t0)
             return
         except Exception as err:  # noqa: BLE001 - fall back to waiting for the sensor's Security Request
-            _LOGGER.info(
+            _LOGGER.debug(
                 "%s: pair() did not encrypt the link after %.1f s (%s%s), waiting for the sensor's Security Request",
                 name,
                 time.monotonic() - t0,
@@ -157,7 +157,7 @@ async def encrypt_link(client, name: str, t0: float) -> None:
     remaining = ENCRYPT_SETTLE - (time.monotonic() - t0)
     if remaining > 0:
         await asyncio.sleep(remaining)
-    _LOGGER.info("%s: first command sent %.1f s after connect", name, time.monotonic() - t0)
+    _LOGGER.debug("%s: first command sent %.1f s after connect", name, time.monotonic() - t0)
 
 
 async def _open(
@@ -219,7 +219,7 @@ async def _open(
     except Exception as err:
         raise HomeAssistantError(f"Could not connect to {name} ({address}): {err}") from err
     link = describe_link(hass, client, address)
-    _LOGGER.info("Connected to %s (%s) via %s", name, address, link)
+    _LOGGER.debug("Connected to %s (%s) via %s", name, address, link)
     from . import get_shared  # late import: the package imports this module lazily
 
     get_shared(hass).links[address] = link

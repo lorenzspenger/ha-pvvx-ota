@@ -275,9 +275,9 @@ async def _release_link(client: GattClient) -> None:
     try:
         async with asyncio.timeout(DISCONNECT_AFTER_FLASH_TIMEOUT):
             await disconnect()
-        _LOGGER.info("Link released after the end marker")
+        _LOGGER.debug("Link released after the end marker")
     except Exception as err:  # noqa: BLE001 - e.g. already gone because the sensor rebooted
-        _LOGGER.info("Releasing the link after the end marker ended with %s: %s", type(err).__name__, err)
+        _LOGGER.debug("Releasing the link after the end marker ended with %s: %s", type(err).__name__, err)
 
 
 async def _after_marker(client: GattClient) -> None:
@@ -292,10 +292,10 @@ async def _after_marker(client: GattClient) -> None:
             async with asyncio.timeout(3):
                 st = await client.read_gatt_char(OTA_CHAR)
         except Exception as err:  # noqa: BLE001 - any failure here means the link is gone
-            _LOGGER.info("After the end marker the device went away (%s): it is rebooting", type(err).__name__)
+            _LOGGER.debug("After the end marker the device went away (%s): it is rebooting", type(err).__name__)
             return
         code = st[0] if st else 0
-        _LOGGER.info("Status %s s after the end marker: %s", second, code)
+        _LOGGER.debug("Status %s s after the end marker: %s", second, code)
         if code:
             msg = OTA_ERRORS[code] if code < len(OTA_ERRORS) else str(code)
             raise OtaDeviceError(f"device rejected the image after the end marker: {msg}")
@@ -321,15 +321,17 @@ async def request_fast_link(client: GattClient, when: str) -> bool:
     Returns True if the call went through (older layers only log a warning and return, which looks the same here)."""
     method = getattr(client, "set_connection_params", None)
     if method is None:
-        _LOGGER.info("Connection params (%s): this client has no set_connection_params; link stays as negotiated", when)
+        _LOGGER.debug(
+            "Connection params (%s): this client has no set_connection_params; link stays as negotiated", when
+        )
         return False
     try:
         async with asyncio.timeout(FAST_LINK_TIMEOUT):
             await method(*FAST_LINK)
     except Exception as err:  # noqa: BLE001 - old proxy firmware, no backend support, timeout...
-        _LOGGER.info("Connection params (%s): not set (%s: %s); continuing", when, type(err).__name__, err)
+        _LOGGER.debug("Connection params (%s): not set (%s: %s); continuing", when, type(err).__name__, err)
         return False
-    _LOGGER.info(
+    _LOGGER.debug(
         "Connection params (%s): requested interval %s-%s (x1.25 ms), latency %s, timeout %s (x10 ms) via %s",
         when,
         FAST_LINK[0],
@@ -357,7 +359,7 @@ async def _flash(
         return f"+{loop.time() - t_conn:.2f} s since connect"
 
     if context:
-        _LOGGER.info("OTA link: %s", context)
+        _LOGGER.debug("OTA link: %s", context)
     await request_fast_link(client, f"before start, {since_connect()}")
     await _write(client, bytes.fromhex("00ff"), True, wt)  # start
     await _write(client, bytes.fromhex("01ff"), True, wt)
@@ -371,7 +373,7 @@ async def _flash(
     await asyncio.sleep(0.3)
     total = -(-len(fw) // BLOCK)
     last_pct = -1
-    _LOGGER.info(
+    _LOGGER.debug(
         "Starting OTA: %s bytes, %s blocks, status every %s blocks (%s)", len(fw), total, status_every, since_connect()
     )
     t_start = t_mark = t_win = loop.time()
@@ -386,7 +388,7 @@ async def _flash(
             # before the end marker; the final status read flushes the queued writes.
             await _status(client, wt, "after the last block")
             # End marker: on success the device verifies the image and reboots, dropping the link.
-            _LOGGER.info(
+            _LOGGER.debug(
                 "All %s blocks sent and accepted after %.0f s, sending end marker", total, loop.time() - t_start
             )
             try:
@@ -394,7 +396,7 @@ async def _flash(
             except OtaTimeout:
                 raise
             except Exception as err:  # noqa: BLE001 - disconnect while rebooting is expected
-                _LOGGER.info("End marker write ended with %s: %s (device rebooting?)", type(err).__name__, err)
+                _LOGGER.debug("End marker write ended with %s: %s (device rebooting?)", type(err).__name__, err)
             await _after_marker(client)
             await _release_link(client)
             break
@@ -428,7 +430,7 @@ async def _flash(
                     probe_open = False
                 elif not probe_asked:
                     probe_asked = True
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "OTA link slow (%.1f blocks/s, below %.0f): asking for the fast connection parameters again",
                         probe_rate,
                         SLOW_BLOCKS_PER_S,
@@ -448,7 +450,7 @@ async def _flash(
                 if pct // 10 != (pct - 1) // 10 or pct == 100:
                     now = loop.time()
                     done = i + 1 - blocks_mark
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "OTA %s%%: %.1f blocks/s over %.1f s; status reads %s x %.2f s (%.0f%% of the time)",
                         pct,
                         done / max(now - t_mark, 1e-9),

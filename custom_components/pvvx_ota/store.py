@@ -520,11 +520,11 @@ class ConfigStore:
             await asyncio.sleep(2)
             info = bluetooth.async_last_service_info(self.hass, self.address, connectable=True)
             if info is not None and info.time > start:
-                _LOGGER.info(
+                _LOGGER.debug(
                     "%s: advertising again %.0f s after the reboot command", self.name, time.monotonic() - start
                 )
                 return
-        _LOGGER.info("%s: not heard again within %.0f s after the reboot command", self.name, REBOOT_WATCH)
+        _LOGGER.debug("%s: not heard again within %.0f s after the reboot command", self.name, REBOOT_WATCH)
 
     async def async_set_calibration(self, temp_offset: float | None = None, humi_offset: float | None = None) -> None:
         """Change the temperature and/or humidity offset (read-modify-write of the 12 coefficient bytes: slopes and the

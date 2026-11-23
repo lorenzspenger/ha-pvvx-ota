@@ -79,7 +79,7 @@ def connects(monkeypatch):
 
 
 async def test_bonded_sensor_is_encrypted_by_pair_before_the_first_command(hass, connects, caplog):
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.DEBUG)
     client = Linked(needs_pairing=True)
     connects.append(client)
     async with dev.async_connected(hass, MAC, "ATC", encrypt=True, bonded_scanner=PROXY) as c:
@@ -90,7 +90,7 @@ async def test_bonded_sensor_is_encrypted_by_pair_before_the_first_command(hass,
 
 @pytest.mark.parametrize("kind", ["missing", "fails"])
 async def test_bonded_sensor_waits_for_the_security_request_when_pair_is_unusable(hass, connects, caplog, kind):
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.DEBUG)
     client = Linked(pair_fails=True)
     if kind == "missing":
         client.pair = None  # a backend without pair()
@@ -98,7 +98,7 @@ async def test_bonded_sensor_waits_for_the_security_request_when_pair_is_unusabl
     async with dev.async_connected(hass, MAC, "ATC", encrypt=True, bonded_scanner=PROXY):
         pass
     assert "Security Request" in caplog.text and "first command sent" in caplog.text
-    assert ("did not encrypt the link" in caplog.text) == (kind == "fails")  # a failed pair() is logged at INFO
+    assert ("did not encrypt the link" in caplog.text) == (kind == "fails")  # a failed pair() is logged at DEBUG
 
 
 async def test_bonded_sensor_connects_through_the_paired_proxys_path_only(hass, connects):

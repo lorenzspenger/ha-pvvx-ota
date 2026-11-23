@@ -273,11 +273,11 @@ class PvvxOtaConfigFlow(ConfigFlow, domain=DOMAIN):
             outcome.abort = "not_pvvx"
             return outcome
         except PairConnectError as err:
-            _LOGGER.info("%s", err)
+            _LOGGER.debug("%s", err)
             outcome.error = "pair_connect_failed"
             return outcome
         except (HomeAssistantError, OtaError) as err:
-            _LOGGER.info("Could not pair %s through %s: %s", address, proxy.name, err)
+            _LOGGER.debug("Could not pair %s through %s: %s", address, proxy.name, err)
             outcome.error = "cannot_connect"
             return outcome
         if ver is None:

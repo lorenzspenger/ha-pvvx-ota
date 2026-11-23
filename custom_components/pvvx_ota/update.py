@@ -509,7 +509,7 @@ class PvvxUpdateEntity(UpdateEntity):
             self._attr_update_percentage = None
             for waiting in list(shared.waiting):
                 waiting.async_write_ha_state()
-            _LOGGER.info("%s: waiting for the firmware lock, position %s", self._name, len(shared.waiting))
+            _LOGGER.debug("%s: waiting for the firmware lock, position %s", self._name, len(shared.waiting))
             acquired = False
             try:
                 async with asyncio.timeout(QUEUE_TIMEOUT):
@@ -589,6 +589,12 @@ class PvvxUpdateEntity(UpdateEntity):
                     self.async_write_ha_state()
                     record["link"] = describe_link(self.hass, client, self._address)
                     record["beta"] = bool(local is None and target.is_beta)
+                    _LOGGER.info(
+                        "%s: flashing %s via %s",
+                        self._name,
+                        f"V{fmt_version(target.version)}" if local is None else filename,
+                        record["link"],
+                    )
                     stats = await flash(
                         client,
                         fw,
@@ -600,6 +606,7 @@ class PvvxUpdateEntity(UpdateEntity):
                     record.update(
                         stats, result="ok", blocks_per_s=round(stats["blocks"] / max(stats["seconds"], 0.1), 1)
                     )
+                    _LOGGER.info("%s: flash finished in %.0f s", self._name, stats["seconds"])
             except OtaError as err:
                 text = f"{err} ({notice})" if notice else str(err)
                 record["result"] = f"failed: {text}"
@@ -644,7 +651,7 @@ class PvvxUpdateEntity(UpdateEntity):
                     await self._store_cfg.async_after_flash()  # encryption flag back on, differing settings flagged
                     return
                 except HomeAssistantError as err:
-                    _LOGGER.info("%s: post-flash version check %s/8 failed: %s", self._name, attempt + 1, err)
+                    _LOGGER.debug("%s: post-flash version check %s/8 failed: %s", self._name, attempt + 1, err)
                     await asyncio.sleep(45)
             _LOGGER.warning(
                 "%s: could not confirm the new version after flashing; installed version left unchanged",

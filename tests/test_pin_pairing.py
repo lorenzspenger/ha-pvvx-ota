@@ -588,7 +588,7 @@ def proxies(n):
 async def test_only_the_best_proxy_pairs_and_a_refusing_sensor_gets_the_checklist(
     hass: HomeAssistant, enable_bluetooth, caplog
 ):
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.DEBUG)
     r = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_BLUETOOTH}, data=svc())
     first, second = proxies(2)
     ctx, kwargs = connections(refused(), refused(), Linked(cfg=SAMPLE))

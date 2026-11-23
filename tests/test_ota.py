@@ -296,7 +296,7 @@ class ParamsClient(FakeClient):
 
 
 async def test_flash_requests_fast_connection_before_and_after_start(caplog):
-    caplog.set_level("INFO")
+    caplog.set_level("DEBUG")
     c = ParamsClient()
     await ota.flash(c, image(200))
     assert c.params_calls == [(6, 6, 0, 600)] * 3
@@ -308,7 +308,7 @@ async def test_flash_requests_fast_connection_before_and_after_start(caplog):
 
 
 async def test_flash_works_without_set_connection_params(caplog):
-    caplog.set_level("INFO")
+    caplog.set_level("DEBUG")
     c = FakeClient()  # no such method (old bleak / backend)
     await ota.flash(c, image(200))
     assert c.writes and "has no set_connection_params" in caplog.text
@@ -316,7 +316,7 @@ async def test_flash_works_without_set_connection_params(caplog):
 
 @pytest.mark.parametrize("err", [NotImplementedError("old"), RuntimeError("boom"), ota.OtaError("x")])
 async def test_failure_to_set_params_is_not_fatal(err, caplog):
-    caplog.set_level("INFO")
+    caplog.set_level("DEBUG")
     c = ParamsClient(fail=err)
     await ota.flash(c, image(200))
     assert c.writes and "not set" in caplog.text and "continuing" in caplog.text
@@ -335,7 +335,7 @@ async def test_params_call_that_hangs_is_cut_off(monkeypatch):
 
 
 async def test_delayed_rerequest_waits_until_2_s_after_connect(monkeypatch, caplog):
-    caplog.set_level("INFO")
+    caplog.set_level("DEBUG")
     monkeypatch.setattr(ota, "DELAYED_REREQUEST_AFTER", 0.3)
     c = ParamsClient()
     loop = asyncio.get_running_loop()
@@ -348,7 +348,7 @@ async def test_delayed_rerequest_waits_until_2_s_after_connect(monkeypatch, capl
 
 
 async def test_context_and_timing_windows_are_logged(caplog):
-    caplog.set_level("INFO")
+    caplog.set_level("DEBUG")
     c = ParamsClient()
     await ota.flash(
         c, image(300), status_every=8, connected_at=asyncio.get_running_loop().time(), context="via proxy X, RSSI -33"
@@ -410,7 +410,7 @@ async def test_stop_notify_errors_and_status_timeouts_are_contained():
 async def test_releasing_the_link_tolerates_odd_clients(caplog):
     import logging
 
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.DEBUG)
     await ota._release_link(SimpleNamespace())  # a client without disconnect()
 
     class Gone:
@@ -424,7 +424,7 @@ async def test_releasing_the_link_tolerates_odd_clients(caplog):
 async def test_progress_is_reported_in_steps_over_a_long_image(caplog):
     import logging
 
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.DEBUG)
     c, pct = FakeClient(), []
     await ota.flash(c, image(3000), pct.append)
     assert pct[-1] == 100 and len(set(pct)) > 10

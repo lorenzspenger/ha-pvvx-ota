@@ -127,7 +127,7 @@ async def test_post_flash_verification_gives_up_after_eight_tries(setup, caplog)
     captured = []
     with patch.object(upd, "async_call_later", lambda hass_, delay, cb: captured.append(cb) or (lambda: None)):
         entity._schedule_verify()
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.DEBUG)
 
     async def no_wait(_):
         return None
