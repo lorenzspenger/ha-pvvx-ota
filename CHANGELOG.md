@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.23.0-beta.2
+
+Git tag `v0.23.0-beta.2`, manifest version `0.23.0b2`.
+
+- **Quieter logs**: connection, encryption, pairing and per-window flash timing details moved from INFO to DEBUG. INFO keeps one line per
+  meaningful event (flash started/finished, sensor added or paired, clock set, encryption restored, reboot, pairing restored).
+- **Documentation**: short README; details moved to `docs/` (usage, PIN sensors, troubleshooting).
+- **PIN-protected sensors are now marked experimental**: officially supported are sensors without a PIN; the PIN workaround via the
+  ESPHome package is documented in `docs/pin-sensors.md`, including the known failure case and the TelinkMiFlasher fix.
+
 ## 0.23.0-beta.1 (first public beta)
 
 First public release. Git tag `v0.23.0-beta.1`, manifest version `0.23.0b1`. Install it as a pre-release (see the README).
