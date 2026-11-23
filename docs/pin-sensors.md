@@ -1,5 +1,10 @@
 # PIN-protected sensors
 
+> **Experimental, not stable.** This repository supports pvvx sensors **without a PIN**. PIN sensors work only through the workaround below
+> (an ESPHome package on one proxy) and can fail on some sensors: pairing succeeds, the link is encrypted, and the sensor still refuses.
+> If that happens, use TelinkMiFlasher: update the firmware, set the PIN to 0, save, then set the PIN again (checklist at the end). For
+> reliable use, remove the PIN.
+
 How to use sensors that have a PIN set. Back to the [README](../README.md). Design background: [design-notes.md](design-notes.md).
 
 ## Overview
@@ -11,7 +16,7 @@ behaves like any other. Other proxies and the local adapter are never used for i
 
 ### Easiest: the PIN in Home Assistant (proxy package)
 
-Give one proxy the pairing package [`esphome/pvvx_pin_pairing.yaml`](esphome/pvvx_pin_pairing.yaml) from this repository. In that
+Give one proxy the pairing package [`esphome/pvvx_pin_pairing.yaml`](../esphome/pvvx_pin_pairing.yaml) from this repository. In that
 proxy's ESPHome YAML (ESPHome 2026.10 or newer, ESP-IDF):
 
 ```yaml

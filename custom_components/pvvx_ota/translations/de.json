@@ -12,7 +12,7 @@
         "description": "{name} hinzufügen? Dazu wird einmal per Bluetooth verbunden, um zu prüfen, ob pvvx-Firmware läuft, und um Board und Version auszulesen."
       },
       "pin": {
-        "title": "PIN erforderlich",
+        "title": "PIN erforderlich (experimentell)",
         "description": "{name} hat eine PIN und noch kein Proxy hat sich mit ihm gekoppelt. Gib die PIN ein: Home Assistant übergibt sie einem Bluetooth-Proxy, der die Koppel-Aktion anbietet (der Proxy koppelt mit dem Sensor und behält die Kopplung). Das dauert etwa 25 Sekunden. Die PIN wird in diesem Eintrag gespeichert, damit die Kopplung wiederholt werden kann, falls der Proxy sie verliert.",
         "data": {
           "pin": "PIN (1 bis 999999)"

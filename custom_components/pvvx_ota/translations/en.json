@@ -12,7 +12,7 @@
         "description": "Add {name}? This connects once over Bluetooth to confirm it runs pvvx firmware and to read its board and version."
       },
       "pin": {
-        "title": "PIN needed",
+        "title": "PIN needed (experimental)",
         "description": "{name} has a PIN and no proxy has paired with it yet. Enter the PIN: Home Assistant hands it to a Bluetooth proxy that offers the pairing action (the proxy pairs with the sensor and keeps the bond). This takes about 25 seconds. The PIN is stored in this entry so that pairing can be repeated if the proxy loses the bond.",
         "data": {
           "pin": "PIN (1 to 999999)"
