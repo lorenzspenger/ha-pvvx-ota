@@ -28,7 +28,7 @@ rules:
     status: done
   docs-removal-instructions:
     status: done
-    comment: README section Removal.
+    comment: docs/usage.md section Removal.
   entity-event-setup:
     status: done
   entity-unique-id:

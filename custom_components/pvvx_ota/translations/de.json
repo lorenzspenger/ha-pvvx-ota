@@ -37,7 +37,7 @@
       "already_configured": "Das Gerät ist bereits eingerichtet",
       "no_devices_found": "Keine pvvx-Sensoren in der Nähe gefunden",
       "not_pvvx": "Dieses Gerät hat nicht wie pvvx-Custom-Firmware geantwortet (vielleicht ein anderes BTHome-Gerät oder ATC1441-Firmware).",
-      "pin_protected": "Dieser Sensor hat eine PIN gesetzt und kein Proxy kann ihn koppeln (kein ESPHome-Proxy, der ihn hört, bietet die Aktion pair_pvvx an, und keiner hat eine Kopplung mit ihm), daher wurde er nicht hinzugefügt und wird jetzt ignoriert, damit er nicht erneut angeboten wird. Füge einem Proxy das Koppel-Paket hinzu (README: Pairing a PIN sensor) und hebe das Ignorieren dann auf der Integrationsseite auf (Ignorierte Geräte). Oder entferne die PIN mit TelinkMiFlasher.",
+      "pin_protected": "Dieser Sensor hat eine PIN gesetzt und kein Proxy kann ihn koppeln (kein ESPHome-Proxy, der ihn hört, bietet die Aktion pair_pvvx an, und keiner hat eine Kopplung mit ihm), daher wurde er nicht hinzugefügt und wird jetzt ignoriert, damit er nicht erneut angeboten wird. Füge einem Proxy das Koppel-Paket hinzu (siehe docs/pin-sensors.md im Repository der Integration) und hebe das Ignorieren dann auf der Integrationsseite auf (Ignorierte Geräte). Oder entferne die PIN mit TelinkMiFlasher.",
       "reauth_successful": "Die PIN wurde gespeichert und der Sensor ist neu gekoppelt.",
       "reconfigure_successful": "Die PIN wurde gespeichert.",
       "no_pin_sensor": "Dieser Sensor hat keine PIN-Kopplung; es gibt nichts zu konfigurieren."
@@ -47,7 +47,7 @@
       "pairing_required": "Dieser Sensor hat eine PIN gesetzt. Sensoren mit PIN werden von dieser Integration nicht unterstützt und wurden daher nicht hinzugefügt. Entferne die PIN mit TelinkMiFlasher, um den Sensor zu nutzen. Rohfehler: {error}",
       "unexpected": "Unerwarteter Fehler: {error}. Den Traceback findest du im Home-Assistant-Log (pvvx_ota).",
       "pin_wrong": "Der Proxy hat mit der PIN gekoppelt, aber {name} verweigert die Verbindung weiterhin. Das Problem liegt am Sensor, meist ein alter Kopplungseintrag oder alte Firmware. Einmalig mit TelinkMiFlasher ({flasher_url}) in der Nähe des Sensors beheben: 1) verbinden und die Firmware auf die neueste Version aktualisieren, 2) die PIN auf 0 setzen und speichern, dann die PIN wieder setzen (das leert den Kopplungsspeicher des Sensors), 3) den Sensor hier erneut hinzufügen.",
-      "no_pairing_proxy": "Kein Proxy, der diesen Sensor hört, bietet die Koppel-Aktion noch an. Siehe README, Abschnitt Pairing a PIN sensor.",
+      "no_pairing_proxy": "Kein Proxy, der diesen Sensor hört, bietet die Koppel-Aktion noch an. Siehe docs/pin-sensors.md im Repository der Integration.",
       "pair_connect_failed": "Der Proxy konnte sich zum Koppeln nicht mit dem Sensor verbinden (pvvx-Sensoren sind nur zeitweise verbindbar). Bitte gleich noch einmal versuchen.",
       "pair_no_passkey": "{name} hat ohne PIN-Abfrage gekoppelt und verweigert die Verbindung weiterhin. Das Problem liegt am Sensor, meist ein alter Kopplungseintrag oder alte Firmware. Einmalig mit TelinkMiFlasher ({flasher_url}) in der Nähe des Sensors beheben: 1) verbinden und die Firmware auf die neueste Version aktualisieren, 2) die PIN auf 0 setzen und speichern, dann die PIN wieder setzen (das leert den Kopplungsspeicher des Sensors), 3) den Sensor hier erneut hinzufügen."
     },
@@ -124,7 +124,7 @@
     },
     "pin_bond_lost": {
       "title": "{name}: Kopplung verloren, am Proxy neu koppeln",
-      "description": "Dieser Sensor hat eine PIN und wurde mit einer Kopplung in einem ESPHome-Proxy hinzugefügt, verweigert die Verbindung aber jetzt auch nach der Verschlüsselung. Wahrscheinlich hat der Proxy die Kopplung verloren (Flash gelöscht, NVS gelöscht) oder die PIN wurde geändert. Drücke am Proxy erneut die Koppeln-Taste (README: Pairing a PIN sensor); dieses Problem verschwindet nach dem nächsten erfolgreichen Lesen."
+      "description": "Dieser Sensor hat eine PIN und wurde mit einer Kopplung in einem ESPHome-Proxy hinzugefügt, verweigert die Verbindung aber jetzt auch nach der Verschlüsselung. Wahrscheinlich hat der Proxy die Kopplung verloren (Flash gelöscht, NVS gelöscht) oder die PIN wurde geändert. Drücke am Proxy erneut die Koppeln-Taste (siehe docs/pin-sensors.md im Repository der Integration); dieses Problem verschwindet nach dem nächsten erfolgreichen Lesen."
     },
     "pin_set": {
       "title": "{name}: PIN wurde gesetzt",

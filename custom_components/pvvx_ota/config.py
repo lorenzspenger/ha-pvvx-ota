@@ -17,7 +17,7 @@ Display bits are board specific: some bits of ``flg``/``flg2``/``flg3`` mean dif
 keys a hardware id may use (no two keys of one board share bits, a test checks this). Boards not listed there get no
 display fields at all. Evidence per board: the notes in docs/display-layouts.md.
 
-Dangerous settings (exposed only behind explicit guardrails, see the README): advertising type (leaving BTHome makes
+Dangerous settings (exposed only behind explicit guardrails, see docs/usage.md): advertising type (leaving BTHome makes
 HA's ``bthome`` stop seeing the sensor), long range / BT5 PHY, encryption (``adv_crypto`` + bindkey, via an action that
 sets the key first) and the PIN (command 0x70, write only). Not exposed at all: ``adv_flags`` (flg2 bit 4),
 ``hw_ver`` (read only, shown as a diagnostic), ``connect_latency``, ``averaging_measurements``, the pseudo-random

@@ -1,4 +1,4 @@
-"""Pairing a PIN sensor through an ESPHome proxy that offers the ``pair_pvvx`` action (README: components package).
+"""Pairing a PIN sensor through an ESPHome proxy that offers the ``pair_pvvx`` action (docs/pin-sensors.md, esphome/pvvx_pin_pairing.yaml).
 
 Home Assistant cannot enter a passkey itself. The proxy can: its YAML package has a generic ble_client that connects to a
 MAC, answers the passkey request with a PIN and keeps the bond in its flash. This module finds such a proxy and calls the

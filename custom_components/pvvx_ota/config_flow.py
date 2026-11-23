@@ -181,7 +181,7 @@ class PvvxOtaConfigFlow(ConfigFlow, domain=DOMAIN):
         except PairingRequiredError as err:
             _LOGGER.debug("PIN sensor %s has no usable bond via %s: %s", address, source, err)
             # nobody can pair it: remember it as ignored (what the "Ignore" button does) so discovery stops
-            # offering it; after setting up pairing on a proxy (README) it can be un-ignored on the integration page
+            # offering it; after setting up pairing on a proxy (docs/pin-sensors.md) it can be un-ignored on the integration page
             await self.hass.config_entries.flow.async_init(
                 DOMAIN, context={"source": SOURCE_IGNORE}, data={"unique_id": address, "title": name}
             )
