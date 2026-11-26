@@ -601,6 +601,41 @@ async def test_adv_type_change_raises_repair_issue_and_clears(hass: HomeAssistan
         [c.stop() for c in ctx]
 
 
+async def test_reads_clear_issues_whose_cause_is_gone(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    """Fixed elsewhere (another tool): the next read dismisses the issue."""
+    client = FakeClient(cfg=SAMPLE)
+    entry, calls, ctx = await setup_cfg_entry(hass, client)
+    try:
+        store, reg = entry.runtime_data, ir.async_get(hass)
+
+        def raised(*keys):
+            return {k: bool(reg.async_get_issue(DOMAIN, f"{k}_{entry.entry_id}")) for k in keys}
+
+        keys = ("adv_type_changed", "encryption_restore_failed", "pin_set", "settings_differ_after_flash")
+
+        def block(**changes):
+            return bytes([0x55, 0x59]) + cfg.apply(SAMPLE, changes, 10, frozenset(changes) & {"adv_crypto"})
+
+        for k in keys:
+            store._issue(k)
+        store.set_raw(block(adv_type=1))  # still not BTHome, encryption off; nothing to restore
+        assert raised(*keys) == {
+            "adv_type_changed": True,
+            "encryption_restore_failed": True,
+            "pin_set": False,  # a read without PIN
+            "settings_differ_after_flash": False,
+        }
+        store.set_raw(block(adv_type=3, adv_crypto=1))
+        assert not any(raised(*keys).values())
+        # a bonded PIN sensor reads fine with its PIN: that says nothing about the issue
+        hass.config_entries.async_update_entry(entry, data={**entry.data, "pin_bonded": True})
+        store._issue("pin_set")
+        store.set_raw(SAMPLE)
+        assert raised("pin_set") == {"pin_set": True}
+    finally:
+        [c.stop() for c in ctx]
+
+
 async def test_phy_switches_write_only_their_bits(hass: HomeAssistant, enable_bluetooth, fast_batch):
     client = FakeClient(cfg=SAMPLE)
     entry, calls, ctx = await setup_cfg_entry(hass, client)

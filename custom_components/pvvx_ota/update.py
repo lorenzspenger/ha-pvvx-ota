@@ -305,6 +305,7 @@ class PvvxUpdateEntity(UpdateEntity):
         ver, hw = parse_cfg(self._store_cfg.raw)
         if ver is not None and (ver, hw) != (self._version, self._hw_id):
             self._version, self._hw_id = ver, hw
+            self._clear_flash_issues(ver)
             self.async_write_ha_state()
 
     @callback
@@ -459,10 +460,19 @@ class PvvxUpdateEntity(UpdateEntity):
         self._store(ver, hw)
         self._store_cfg.set_raw(raw)
 
+    def _clear_flash_issues(self, ver: int) -> None:
+        """The failed/unconfirmed-flash issues go once a read shows a new version that is the latest one."""
+        target = self._target()
+        if target is not None and ver >= target.version:
+            self._store_cfg.flash_succeeded()
+
     def _store(self, ver: int | None, hw: int | None) -> None:
         if ver is None:
             raise ha_error("unrecognised_reply", name=self._name)
+        changed = ver != self._version
         self._version, self._hw_id = ver, hw
+        if changed:
+            self._clear_flash_issues(ver)
         self.hass.config_entries.async_update_entry(
             self._entry, data={**self._entry.data, CONF_VERSION: ver, CONF_HW_ID: hw}
         )

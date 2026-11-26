@@ -4,6 +4,8 @@
 
 - **"Advert encryption changed" and "settings were reset to defaults" are notifications instead of repair issues**; existing ones are removed.
 - **Switching encryption on with `set_encryption` clears the "encryption was not switched back on" repair issue.**
+- **Repair issues clear themselves once a read shows the cause is gone**, also when it was fixed with another tool: advertising type not BTHome, encryption not switched back on, a PIN that was set, settings that differ after a flash.
+- **The "firmware update failed" and "flash may not have been applied" issues also clear when a version read shows the latest firmware.**
 
 ## 0.24.0
 

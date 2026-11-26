@@ -221,7 +221,7 @@
   "issues": {
     "adv_type_changed": {
       "title": "{name}: Advertising-Typ ist nicht BTHome",
-      "description": "Der Sensor sendet nicht mehr im BTHome-Format, daher erhält die BTHome-Integration von Home Assistant keine Daten mehr von ihm. Stelle den Advertising-Typ wieder auf BTHome (die Entität ist standardmäßig deaktiviert; aktiviere sie) oder nutze TelinkMiFlasher."
+      "description": "Der Sensor sendet nicht mehr im BTHome-Format, daher erhält die BTHome-Integration von Home Assistant keine Daten mehr von ihm. Stelle den Advertising-Typ wieder auf BTHome (die Entität ist standardmäßig deaktiviert; aktiviere sie) oder nutze TelinkMiFlasher. Die Meldung verschwindet von selbst, sobald ein Lesen wieder BTHome zeigt."
     },
     "encryption_changed": {
       "title": "{name}: Advert-Verschlüsselung geändert",
@@ -233,7 +233,7 @@
     },
     "pin_set": {
       "title": "{name}: PIN wurde gesetzt",
-      "description": "Auf diesem Sensor wurde eine PIN gesetzt, er antwortet nur noch über eine verschlüsselte Verbindung und Home Assistant kann ihn nicht mehr lesen. Koppele ihn über einen ESPHome-Proxy mit dem Koppel-Paket (siehe docs/pin-sensors.md, dann den Eintrag neu konfigurieren) oder entferne die PIN mit TelinkMiFlasher."
+      "description": "Auf diesem Sensor wurde eine PIN gesetzt, er antwortet nur noch über eine verschlüsselte Verbindung und Home Assistant kann ihn nicht mehr lesen. Koppele ihn über einen ESPHome-Proxy mit dem Koppel-Paket (siehe docs/pin-sensors.md, dann den Eintrag neu konfigurieren) oder entferne die PIN mit TelinkMiFlasher. Die Meldung verschwindet von selbst, sobald sich der Sensor ohne PIN lesen lässt."
     },
     "pin_pairing_failed": {
       "title": "{name}: konnte nicht mit seiner PIN gekoppelt werden",
@@ -245,15 +245,15 @@
     },
     "encryption_restore_failed": {
       "title": "{name}: Verschlüsselung wurde nicht wieder eingeschaltet",
-      "description": "Der Flash hat das BTHome-Verschlüsselungs-Flag des Sensors gelöscht, und es ließ sich nicht automatisch wieder einschalten (vielleicht hat der Sensor den Schlüssel nicht mehr). Solange kann der BTHome-Eintrag von Home Assistant, der den Schlüssel kennt, den Sensor nicht lesen. Schalte sie mit der Aktion pvvx_ota.set_encryption und deinem bisherigen Schlüssel wieder ein (Entwicklerwerkzeuge > Aktionen)."
+      "description": "Der Flash hat das BTHome-Verschlüsselungs-Flag des Sensors gelöscht, und es ließ sich nicht automatisch wieder einschalten (vielleicht hat der Sensor den Schlüssel nicht mehr). Solange kann der BTHome-Eintrag von Home Assistant, der den Schlüssel kennt, den Sensor nicht lesen. Schalte sie mit der Aktion pvvx_ota.set_encryption und deinem bisherigen Schlüssel wieder ein (Entwicklerwerkzeuge > Aktionen). Die Meldung verschwindet von selbst, sobald ein Lesen die Verschlüsselung als eingeschaltet zeigt."
     },
     "settings_differ_after_flash": {
       "title": "{name}: Einstellungen weichen von vor dem Flash ab",
-      "description": "Der Flash hat einige Einstellungen des Sensors geändert. Sie werden nicht automatisch zurückgeschrieben: Drücke auf der Geräteseite des Sensors „Vorherige Einstellungen wiederherstellen“, wenn du sie zurückhaben möchtest."
+      "description": "Der Flash hat einige Einstellungen des Sensors geändert. Sie werden nicht automatisch zurückgeschrieben: Drücke auf der Geräteseite des Sensors „Vorherige Einstellungen wiederherstellen“, wenn du sie zurückhaben möchtest. Die Meldung verschwindet von selbst, sobald die Einstellungen wieder übereinstimmen."
     },
     "flash_failed": {
       "title": "{name}: Firmware-Update fehlgeschlagen",
-      "description": "Der letzte Firmware-Vorgang an diesem Sensor ist fehlgeschlagen: {error}. Der Sensor läuft weiter mit der alten Firmware (eine abgebrochene Übertragung wird nicht übernommen). Stelle einen Bluetooth-Proxy näher an den Sensor, prüfe die Batterie und versuche es erneut; die Meldung verschwindet nach dem nächsten erfolgreichen Flash von selbst."
+      "description": "Der letzte Firmware-Vorgang an diesem Sensor ist fehlgeschlagen: {error}. Der Sensor läuft weiter mit der alten Firmware (eine abgebrochene Übertragung wird nicht übernommen). Stelle einen Bluetooth-Proxy näher an den Sensor, prüfe die Batterie und versuche es erneut; die Meldung verschwindet nach dem nächsten erfolgreichen Flash oder sobald ein Lesen die neueste Firmware zeigt von selbst."
     },
     "flash_unconfirmed": {
       "title": "{name}: Flash wurde möglicherweise nicht übernommen",

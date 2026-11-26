@@ -89,7 +89,7 @@ Before a flash the integration looks at the battery voltage of the linked BTHome
 
 A flash can clear settings. The integration therefore saves them first and, once the post-flash version check succeeded:
 * **BTHome encryption** is switched back on automatically if it was on before and the sensor still holds its key (the key itself is never read out, written or logged: only the flag is set again). If that fails, a repair issue explains how to fix it with `pvvx_ota.set_encryption` and your existing key.
-* **All other settings** are never re-applied automatically. If they differ from before the flash, a repair issue points at the *Restore previous settings* button.
+* **All other settings** are never re-applied automatically. If they differ from before the flash, a repair issue points at the *Restore previous settings* button; it clears when the settings match again.
 * No other connection is opened to the sensor for 30 s after a flash (it is rebooting, which takes a few seconds) and the first version check runs after 30 s.
 
 ## Diagnostics and languages
@@ -103,7 +103,7 @@ These can make a sensor disappear from Home Assistant or lock out this integrati
 
 | What | How | Consequence |
 |---|---|---|
-| Advertising type (select) | disabled entity | Anything but **BTHome** stops HA's `bthome` integration from receiving the sensor's data. A repair issue is raised until it is BTHome again. |
+| Advertising type (select) | disabled entity | Anything but **BTHome** stops HA's `bthome` integration from receiving the sensor's data. A repair issue is raised until a read shows BTHome again (also when it was changed elsewhere). |
 | Long range PHY / BT5 PHY (switches) | disabled entities | ESP32 proxies may not receive coded-PHY adverts: the sensor can vanish from HA until it is power cycled (long range resets on power-off). |
 | Encryption + bindkey | action `pvvx_ota.set_encryption` (`enable`, optional `key`) | Stores a key (generated if you give none) and switches encrypted adverts on, or switches them off. The **key is returned only in the action's response** (Developer tools > Actions shows it) and is never put in an entity, attribute or log. Home Assistant's BTHome entry for the sensor then needs that key; this integration does not touch it. A notification reminds you. |
 | PIN | action `pvvx_ota.set_pin` (`pin` 0..999999, `confirm: true`) | **Refuses unless `confirm: true`.** A PIN needs the proxy bond described in [pin-sensors.md](pin-sensors.md); setting or changing the PIN erases the sensor's bonds, so pair again afterwards (and with a bond-less PIN the integration can no longer connect). TelinkMiFlasher can remove the PIN. Write only: the PIN is never read back, and the action neither stores nor logs it (see the event-bus note in [pin-sensors.md](pin-sensors.md)). |

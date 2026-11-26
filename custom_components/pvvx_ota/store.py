@@ -138,12 +138,26 @@ class ConfigStore:
             self._unreachable = False
             _LOGGER.info("%s is reachable again", self.name)
         self._clear_issue("pin_bond_lost")
+        if not self.entry.data.get(CONF_PIN_BONDED):
+            self._clear_issue("pin_set")  # the read worked without a PIN: it was removed elsewhere
+        self._clear_fixed_issues(raw)
         ver, hw = parse_cfg(raw)
         if ver is not None and (self.entry.data.get(CONF_VERSION), self.entry.data.get(CONF_HW_ID)) != (ver, hw):
             self.hass.config_entries.async_update_entry(
                 self.entry, data={**self.entry.data, CONF_VERSION: ver, CONF_HW_ID: hw}
             )
         self.async_notify()
+
+    def _clear_fixed_issues(self, raw: bytes) -> None:
+        """Issues whose cause a read shows to be gone, however it was fixed (here or with another tool)."""
+        if not cfgmod.is_verified(raw):
+            return
+        if cfgmod.get(raw, "adv_type") == 3:
+            self._clear_issue("adv_type_changed")
+        if cfgmod.get(raw, "adv_crypto") == 1:
+            self._clear_issue("encryption_restore_failed")
+        if not self.can_restore:
+            self._clear_issue("settings_differ_after_flash")
 
     @callback
     def take_snapshot(self) -> None:
@@ -349,11 +363,8 @@ class ConfigStore:
             except (OtaError, cfgmod.ConfigError) as err:
                 raise ha_error("sensor_error", name=self.name, error=err) from err
         self.set_raw(echoed)
-        if "adv_type" in changes:
-            if cfgmod.get(echoed, "adv_type") == 3:
-                self._clear_issue("adv_type_changed")
-            else:
-                self._issue("adv_type_changed")
+        if "adv_type" in changes and cfgmod.get(echoed, "adv_type") != 3:
+            self._issue("adv_type_changed")
         stored = {k: cfgmod.get(echoed, k) for k in changes}
         if stored != changes:
             # test_config() in the firmware clamps some values
@@ -447,6 +458,7 @@ class ConfigStore:
         )
 
     def flash_succeeded(self) -> None:
+        """Also called when a version read shows the latest firmware (flashed with another tool)."""
         ir.async_delete_issue(self.hass, DOMAIN, f"flash_failed_{self.address}")
         self._clear_issue("flash_unconfirmed")
 

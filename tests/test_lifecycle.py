@@ -465,3 +465,44 @@ def test_a_sensor_gets_half_a_minute_to_reboot_and_the_check_retries_every_half_
         30,
         8,
     )
+
+
+async def test_flash_issues_clear_when_a_read_shows_the_latest_version(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    from homeassistant.setup import async_setup_component
+
+    assert await async_setup_component(hass, "homeassistant", {})
+    client = FakeClient(cfg=HW0, fail_status_at=3, status_code=2)
+    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0)
+    try:
+        reg = ir.async_get(hass)
+        await failing_flash(hass)
+        entry.runtime_data.flash_unconfirmed()
+        unconfirmed = f"flash_unconfirmed_{entry.entry_id}"
+        assert reg.async_get_issue(DOMAIN, ISSUE) and reg.async_get_issue(DOMAIN, unconfirmed)
+        client.fail_status_at = None
+        old, new = bytes([HW0[0], 0x50]) + HW0[2:], HW0
+        client.cfg = old
+        await hass.services.async_call(
+            "homeassistant", "update_entity", {"entity_id": "update.atc_000001"}, blocking=True
+        )
+        assert reg.async_get_issue(DOMAIN, ISSUE) and reg.async_get_issue(DOMAIN, unconfirmed)  # still the old version
+        client.cfg = new  # flashed with another tool
+        await hass.services.async_call(
+            "homeassistant", "update_entity", {"entity_id": "update.atc_000001"}, blocking=True
+        )
+        assert reg.async_get_issue(DOMAIN, ISSUE) is None and reg.async_get_issue(DOMAIN, unconfirmed) is None
+        # the same through the refresh button (the store's read)
+        client.cfg = old
+        await hass.services.async_call(
+            "homeassistant", "update_entity", {"entity_id": "update.atc_000001"}, blocking=True
+        )
+        entry.runtime_data.flash_failed("x")
+        client.cfg = new
+        await hass.services.async_call(
+            "button", "press", {"entity_id": ent(hass, "button", "refresh_config")}, blocking=True
+        )
+        assert reg.async_get_issue(DOMAIN, ISSUE) is None
+    finally:
+        [c.stop() for c in ctx]

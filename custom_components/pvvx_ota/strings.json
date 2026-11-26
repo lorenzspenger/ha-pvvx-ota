@@ -221,7 +221,7 @@
   "issues": {
     "adv_type_changed": {
       "title": "{name}: advertising type is not BTHome",
-      "description": "The sensor no longer advertises in BTHome format, so Home Assistant's BTHome integration stops receiving its data. Set the advertising type back to BTHome (the entity is disabled by default; enable it) or via TelinkMiFlasher."
+      "description": "The sensor no longer advertises in BTHome format, so Home Assistant's BTHome integration stops receiving its data. Set the advertising type back to BTHome (the entity is disabled by default; enable it) or via TelinkMiFlasher. It clears by itself once a read shows BTHome again."
     },
     "encryption_changed": {
       "title": "{name}: advert encryption changed",
@@ -233,7 +233,7 @@
     },
     "pin_set": {
       "title": "{name}: a PIN was set",
-      "description": "A PIN was set on this sensor, so it only answers over an encrypted link and Home Assistant can no longer read it. Pair it through an ESPHome proxy with the pairing package (see docs/pin-sensors.md, then Reconfigure the entry), or remove the PIN in TelinkMiFlasher."
+      "description": "A PIN was set on this sensor, so it only answers over an encrypted link and Home Assistant can no longer read it. Pair it through an ESPHome proxy with the pairing package (see docs/pin-sensors.md, then Reconfigure the entry), or remove the PIN in TelinkMiFlasher. It clears by itself once the sensor can be read without a PIN."
     },
     "pin_pairing_failed": {
       "title": "{name}: could not be paired with its PIN",
@@ -245,15 +245,15 @@
     },
     "encryption_restore_failed": {
       "title": "{name}: encryption was not switched back on",
-      "description": "The flash cleared the sensor's BTHome encryption flag and it could not be switched on again automatically (the sensor may no longer hold the key). Until then Home Assistant's BTHome entry, which has the key, cannot read the sensor. Use the pvvx_ota.set_encryption action with your existing key (Developer tools > Actions) to switch it on again."
+      "description": "The flash cleared the sensor's BTHome encryption flag and it could not be switched on again automatically (the sensor may no longer hold the key). Until then Home Assistant's BTHome entry, which has the key, cannot read the sensor. Use the pvvx_ota.set_encryption action with your existing key (Developer tools > Actions) to switch it on again. It clears by itself once a read shows encryption on."
     },
     "settings_differ_after_flash": {
       "title": "{name}: settings differ from before the flash",
-      "description": "The flash changed some of the sensor's settings. They are not re-applied automatically: press 'Restore previous settings' on the sensor's device page if you want them back."
+      "description": "The flash changed some of the sensor's settings. They are not re-applied automatically: press 'Restore previous settings' on the sensor's device page if you want them back. It clears by itself once the settings match again."
     },
     "flash_failed": {
       "title": "{name}: firmware update failed",
-      "description": "The last firmware operation on this sensor failed: {error}. The sensor keeps running its old firmware (a failed transfer is not applied). Move a Bluetooth proxy closer, check the sensor's battery and try again; the issue clears itself after the next successful flash."
+      "description": "The last firmware operation on this sensor failed: {error}. The sensor keeps running its old firmware (a failed transfer is not applied). Move a Bluetooth proxy closer, check the sensor's battery and try again; the issue clears itself after the next successful flash or once a read shows the latest firmware."
     },
     "flash_unconfirmed": {
       "title": "{name}: flash may not have been applied",
