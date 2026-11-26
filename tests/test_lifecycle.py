@@ -338,3 +338,119 @@ async def test_restore_works_from_the_snapshot_without_any_read(hass: HomeAssist
     finally:
         [c.stop() for c in ctx]
     del MockConfigEntry
+
+
+# -- the end marker was sent, then the link stalled ---------------------------------------------------------
+
+UNCONFIRMED = "flash_unconfirmed_{}"
+
+
+def capture_verify():
+    """Patch the post-flash timer so the test can run the version check itself."""
+    started = []
+
+    def fake(hass, delay, cb):
+        started.append(cb)
+        return lambda: None
+
+    return started, patch("custom_components.pvvx_ota.update.async_call_later", fake)
+
+
+async def test_a_stall_after_the_end_marker_is_a_failed_unverified_flash_not_a_success(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    client = FakeClient(cfg=HW0, after_marker="stall")
+    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0)
+    try:
+        started, timer = capture_verify()
+        with timer, pytest.raises(HomeAssistantError, match="may or may not"):
+            await flash(hass)
+        assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE)  # not cleared, raised
+        assert entry.runtime_data.last_flash["result"].startswith("unverified")
+        assert hass.states.get("update.atc_000001").attributes["in_progress"] is False
+        assert len(started) == 1  # the version is read back like after a normal flash
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_reading_the_new_version_after_an_unverified_flash_clears_the_issue(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    client = FakeClient(cfg=HW0, after_marker="stall")
+    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0)
+    try:
+        started, timer = capture_verify()
+        with timer, pytest.raises(HomeAssistantError):
+            await flash(hass)
+        reg = ir.async_get(hass)
+        assert reg.async_get_issue(DOMAIN, ISSUE)
+        entity = hass.data["entity_components"]["update"].get_entity("update.atc_000001")
+        client.after_marker = "reboot"
+        await entity._async_verify_after_flash(expected=0x59, unverified=True)  # the sensor answers with V5.9
+        assert reg.async_get_issue(DOMAIN, ISSUE) is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_a_version_that_is_not_the_new_one_leaves_the_issue(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    client = FakeClient(cfg=HW0, after_marker="stall")
+    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0)
+    try:
+        started, timer = capture_verify()
+        with timer, pytest.raises(HomeAssistantError):
+            await flash(hass)
+        entity = hass.data["entity_components"]["update"].get_entity("update.atc_000001")
+        await entity._async_verify_after_flash(expected=0x60, unverified=True)  # still the old version
+        assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE)
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_a_version_check_that_never_works_raises_the_may_not_have_been_applied_issue(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=HW0), hw=0)
+    try:
+        reg = ir.async_get(hass)
+        entity = hass.data["entity_components"]["update"].get_entity("update.atc_000001")
+        sleeps = []
+
+        async def no_wait(seconds):
+            sleeps.append(seconds)
+
+        with (
+            patch("custom_components.pvvx_ota.update.asyncio.sleep", no_wait),
+            patch.object(type(entity), "_async_read_device", side_effect=HomeAssistantError("out of range")),
+        ):
+            await entity._async_verify_after_flash()
+        assert len(sleeps) == 8  # all attempts were made
+        issue = reg.async_get_issue(DOMAIN, UNCONFIRMED.format(entry.entry_id))
+        assert issue and issue.translation_key == "flash_unconfirmed" and not issue.is_fixable
+        # a later successful read clears it again
+        await entity._async_verify_after_flash()
+        assert reg.async_get_issue(DOMAIN, UNCONFIRMED.format(entry.entry_id)) is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_a_normal_flash_end_to_end_raises_no_issue_and_the_check_confirms(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    """Whole path through the update entity: connect, snapshot, flash, disconnect-type end, scheduled version check."""
+    client = FakeClient(cfg=HW0, after_marker="reboot")
+    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0)
+    try:
+        started, timer = capture_verify()
+        with timer:
+            await flash(hass)
+        reg = ir.async_get(hass)
+        assert not [i for i in reg.issues if i[0] == DOMAIN]  # no issue of any kind
+        assert client.marker_sent and client.disconnected
+        assert entry.runtime_data.last_flash["result"] == "ok"
+        assert len(started) == 1
+        entity = hass.data["entity_components"]["update"].get_entity("update.atc_000001")
+        await entity._async_verify_after_flash()
+        assert not [i for i in reg.issues if i[0] == DOMAIN]
+        assert hass.states.get("update.atc_000001").attributes["in_progress"] is False
+    finally:
+        [c.stop() for c in ctx]

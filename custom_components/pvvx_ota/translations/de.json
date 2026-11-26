@@ -45,7 +45,6 @@
     },
     "error": {
       "cannot_connect": "Verbindung zum Sensor nicht möglich (das liegt nicht an einer PIN: die Verbindung selbst kam innerhalb von etwa 25 Sekunden nicht zustande). pvvx-Sensoren sind nur zeitweise verbindbar; auch ein schwaches Signal oder ein ausgelasteter Proxy kann die Ursache sein. Bitte eine Minute warten und es erneut versuchen.",
-      "pairing_required": "Dieser Sensor hat eine PIN gesetzt. Sensoren mit PIN werden von dieser Integration nicht unterstützt und wurden daher nicht hinzugefügt. Entferne die PIN mit TelinkMiFlasher, um den Sensor zu nutzen. Rohfehler: {error}",
       "unexpected": "Unerwarteter Fehler: {error}. Den Traceback findest du im Home-Assistant-Log (pvvx_ota).",
       "pin_wrong": "Der Proxy hat mit der PIN gekoppelt, aber {name} verweigert die Verbindung weiterhin. Das Problem liegt am Sensor, meist ein alter Kopplungseintrag oder alte Firmware. Einmalig mit TelinkMiFlasher ({flasher_url}) in der Nähe des Sensors beheben: 1) verbinden und die Firmware auf die neueste Version aktualisieren, 2) die PIN auf 0 setzen und speichern, dann die PIN wieder setzen (das leert den Kopplungsspeicher des Sensors), 3) den Sensor hier erneut hinzufügen.",
       "no_pairing_proxy": "Kein Proxy, der diesen Sensor hört, bietet die Koppel-Aktion noch an. Siehe docs/pin-sensors.md im Repository der Integration.",
@@ -101,7 +100,7 @@
     },
     "set_pin": {
       "name": "PIN setzen",
-      "description": "WARNUNG: Diese Integration unterstützt keine Sensoren mit PIN. Mit gesetzter PIN kann sie sich nicht mehr mit dem Sensor verbinden (auch die Proxys von Home Assistant können den Passkey nicht eingeben); nur TelinkMiFlasher kann die PIN entfernen. 0 schaltet die PIN aus. Diese Integration speichert und protokolliert sie nicht (der Aufruf selbst läuft über den Ereignisbus von Home Assistant, siehe docs/pin-sensors.md).",
+      "description": "WARNUNG: Das Setzen einer PIN löscht die Kopplungen des Sensors, und ein Sensor mit PIN antwortet nur über eine verschlüsselte Verbindung. Ohne einen Proxy, der eine Kopplung für ihn hält (siehe docs/pin-sensors.md), kann Home Assistant sich nicht mehr verbinden; TelinkMiFlasher kann die PIN entfernen. 0 schaltet die PIN aus. Diese Integration speichert und protokolliert sie nicht (der Aufruf selbst läuft über den Ereignisbus von Home Assistant, siehe docs/pin-sensors.md).",
       "fields": {
         "pin": {
           "name": "PIN",
@@ -129,7 +128,7 @@
     },
     "pin_set": {
       "title": "{name}: PIN wurde gesetzt",
-      "description": "Diese Integration unterstützt keine Sensoren mit PIN und kann sich daher nicht mehr mit diesem Sensor verbinden. Entferne die PIN mit TelinkMiFlasher, um ihn wieder zu nutzen."
+      "description": "Auf diesem Sensor wurde eine PIN gesetzt, er antwortet nur noch über eine verschlüsselte Verbindung und Home Assistant kann ihn nicht mehr lesen. Koppele ihn über einen ESPHome-Proxy mit dem Koppel-Paket (siehe docs/pin-sensors.md, dann den Eintrag neu konfigurieren) oder entferne die PIN mit TelinkMiFlasher."
     },
     "pin_pairing_failed": {
       "title": "{name}: konnte nicht mit seiner PIN gekoppelt werden",
@@ -150,6 +149,10 @@
     "flash_failed": {
       "title": "{name}: Firmware-Update fehlgeschlagen",
       "description": "Der letzte Firmware-Vorgang an diesem Sensor ist fehlgeschlagen: {error}. Der Sensor läuft weiter mit der alten Firmware (eine abgebrochene Übertragung wird nicht übernommen). Stelle einen Bluetooth-Proxy näher an den Sensor, prüfe die Batterie und versuche es erneut; die Meldung verschwindet nach dem nächsten erfolgreichen Flash von selbst."
+    },
+    "flash_unconfirmed": {
+      "title": "{name}: Flash wurde möglicherweise nicht übernommen",
+      "description": "Die Firmware wurde gesendet, aber die neue Version konnte danach nicht zurückgelesen werden; es ist daher nicht bekannt, ob der Flash übernommen wurde. Die angezeigte installierte Version ist möglicherweise veraltet. Prüfe, ob der Sensor wieder sendet (Batterie kurz entfernen startet ihn neu), und drücke dann Aktualisieren; das Problem verschwindet, sobald der Sensor mit der neuen Version antwortet."
     }
   },
   "entity": {

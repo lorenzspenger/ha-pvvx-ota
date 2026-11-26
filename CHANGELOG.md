@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.23.0-beta.4
+
+Git tag `v0.23.0-beta.4`, manifest version `0.23.0b4`.
+
+- **A stalled link after the end marker is no longer counted as a successful flash**: only a real disconnect (link dropped, `BleakError`, client not connected) means "rebooting"; a read timeout with the link still up ends the flash as unverified, keeps the "flash failed" issue and reads the version back afterwards.
+- **"Flash may not have been applied" repair issue** when the version cannot be read back after a flash (all 8 attempts); it clears when the sensor answers again. An unverified flash also clears its failure issue once the expected version is read.
+- **Fewer database writes**: the proxy path, its signal strength, the queue position and the last error of the update entity are no longer recorded in the history.
+- **A sensor that cannot be read is logged once at INFO** ("is unavailable: reason") and once when it works again; `quality_scale.yaml` corrected (`action-setup` done, `action-exceptions` todo, `strict-typing` todo, polling comment).
+- **Stale PIN texts removed**: error and repair texts no longer say that PIN sensors are unsupported; they point to the pairing package or to removing the PIN. The unused `pairing_required` string is gone.
+
 ## 0.23.0-beta.3
 
 Git tag `v0.23.0-beta.3`, manifest version `0.23.0b3`.

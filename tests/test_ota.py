@@ -77,6 +77,33 @@ async def test_flash_end_marker_disconnect_is_success():
     await ota.flash(FakeClient(end_marker_raises=True), image())
 
 
+async def test_flash_end_marker_then_bleak_disconnect_is_success():
+    await ota.flash(FakeClient(after_marker="bleak"), image(100))
+
+
+async def test_flash_stall_after_the_end_marker_with_the_link_up_is_not_success():
+    with pytest.raises(ota.OtaUnverified, match="may or may not"):
+        await ota.flash(FakeClient(after_marker="stall"), image(100))
+
+
+async def test_flash_stall_after_the_end_marker_with_the_link_down_is_a_reboot():
+    await ota.flash(FakeClient(after_marker="stall_link_down"), image(100))
+
+
+def test_which_failures_mean_the_link_dropped():
+    from bleak.exc import BleakError
+
+    up, down = FakeClient(), FakeClient()
+    down.connected_flag = False
+    assert (
+        ota.link_dropped(up, ConnectionError())
+        and ota.link_dropped(up, BleakError("x"))
+        and ota.link_dropped(up, EOFError())
+    )
+    assert not ota.link_dropped(up, TimeoutError()) and not ota.link_dropped(up, ValueError())
+    assert ota.link_dropped(down, TimeoutError())  # the client itself says it is not connected
+
+
 async def test_flash_device_error():
     c = FakeClient(fail_status_at=5)
     with pytest.raises(ota.OtaDeviceError, match="CRC error in data"):

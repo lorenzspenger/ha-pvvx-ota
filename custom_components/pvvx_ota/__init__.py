@@ -36,6 +36,7 @@ ISSUE_KEYS = (
     "adv_type_changed",
     "encryption_changed",
     "encryption_restore_failed",
+    "flash_unconfirmed",
     "pin_bond_lost",
     "pin_set",
     "reset_defaults",

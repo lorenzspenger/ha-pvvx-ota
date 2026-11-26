@@ -45,7 +45,6 @@
     },
     "error": {
       "cannot_connect": "Could not connect to the sensor (this is not a PIN problem: the connection itself did not complete within about 25 seconds). pvvx sensors are connectable only part of the time; a weak signal or a busy proxy also causes this. Wait a minute and try again.",
-      "pairing_required": "This sensor has a PIN set. PIN-protected sensors are not supported by this integration, so it was not added. Remove the PIN in TelinkMiFlasher to use it. Raw error: {error}",
       "unexpected": "Unexpected error: {error}. See the Home Assistant log (pvvx_ota) for the traceback.",
       "pin_wrong": "The proxy paired with the PIN, but {name} still refuses the connection. This is a problem on the sensor, usually an old pairing entry or old firmware. Fix it once with TelinkMiFlasher ({flasher_url}) near the sensor: 1) connect and update the firmware to the latest version, 2) set the PIN to 0 and save, then set your PIN again (this clears the sensor's pairing memory), 3) add the sensor here again.",
       "no_pairing_proxy": "No proxy that hears this sensor offers the pairing action any more. See docs/pin-sensors.md in the integration repository.",
@@ -101,7 +100,7 @@
     },
     "set_pin": {
       "name": "Set PIN",
-      "description": "WARNING: this integration does not support PIN-protected sensors, so with a PIN set it can no longer connect to the sensor (Home Assistant's proxies cannot enter the passkey either); only TelinkMiFlasher can remove the PIN. 0 turns the PIN off. This integration neither logs nor stores it (the action call itself passes through Home Assistant's event bus, see docs/pin-sensors.md).",
+      "description": "WARNING: setting a PIN erases the sensor's bonds, and a sensor with a PIN only answers over an encrypted link. Without a proxy that holds a bond for it (see docs/pin-sensors.md) Home Assistant can no longer connect to it; TelinkMiFlasher can remove the PIN. 0 turns the PIN off. This integration neither logs nor stores it (the action call itself passes through Home Assistant's event bus, see docs/pin-sensors.md).",
       "fields": {
         "pin": {
           "name": "PIN",
@@ -129,7 +128,7 @@
     },
     "pin_set": {
       "title": "{name}: a PIN was set",
-      "description": "This integration does not support PIN-protected sensors, so it can no longer connect to this sensor. Remove the PIN in TelinkMiFlasher to use it again."
+      "description": "A PIN was set on this sensor, so it only answers over an encrypted link and Home Assistant can no longer read it. Pair it through an ESPHome proxy with the pairing package (see docs/pin-sensors.md, then Reconfigure the entry), or remove the PIN in TelinkMiFlasher."
     },
     "pin_pairing_failed": {
       "title": "{name}: could not be paired with its PIN",
@@ -150,6 +149,10 @@
     "flash_failed": {
       "title": "{name}: firmware update failed",
       "description": "The last firmware operation on this sensor failed: {error}. The sensor keeps running its old firmware (a failed transfer is not applied). Move a Bluetooth proxy closer, check the sensor's battery and try again; the issue clears itself after the next successful flash."
+    },
+    "flash_unconfirmed": {
+      "title": "{name}: flash may not have been applied",
+      "description": "The firmware was sent, but the new version could not be read back afterwards, so it is not known whether the flash was applied. The installed version shown may be out of date. Check that the sensor advertises again (a battery pull restarts it), then press Refresh; the issue clears itself when the sensor answers with the new version."
     }
   },
   "entity": {

@@ -221,3 +221,32 @@ async def test_change_during_an_inflight_write_goes_into_the_next_batch(setup):
     assert len(client.cfg_writes) == 2
     assert store.value("screen_off") == 1 and store.value("smiley") == 2
     assert not store._pending
+
+
+async def test_unavailability_is_logged_once_and_so_is_the_return(setup, caplog):
+    import logging
+
+    hass, client, entry, store = setup
+    caplog.set_level(logging.INFO)
+    caplog.clear()
+
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def unreachable(*a, **k):
+        raise HomeAssistantError("out of range")
+        yield
+
+    with patch.object(store_mod, "async_connected", unreachable):
+        for _ in range(3):
+            with pytest.raises(HomeAssistantError):
+                await store.async_refresh()
+    assert [r.message for r in caplog.records if "unavailable" in r.message] == [
+        f"{store.name} is unavailable: out of range"
+    ]
+    assert "reachable again" not in caplog.text
+    await store.async_refresh()  # the sensor answers again
+    assert [r.message for r in caplog.records if "reachable again" in r.message] == [f"{store.name} is reachable again"]
+    caplog.clear()
+    await store.async_refresh()
+    assert "reachable again" not in caplog.text  # only on the way back

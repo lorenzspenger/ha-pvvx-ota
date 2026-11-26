@@ -60,6 +60,7 @@ class ConfigStore:
         self._listeners: list[Callable[[], None]] = []
         self._pending: dict[str, int] = {}
         self._flush: asyncio.Task | None = None
+        self._unreachable = False  # a read failed and none worked since: logged once, and once more when it is back
         self._writing = False  # the running flush has taken its batch and is on the wire: new changes need the next one
         self.flash_latest: Callable[[], Awaitable[None]] | None = (
             None  # set by the update entity (same path as Install)
@@ -132,6 +133,9 @@ class ConfigStore:
     def set_raw(self, raw: bytes) -> None:
         """Record a freshly read block (and the version/hardware id it carries)."""
         self.raw = raw
+        if self._unreachable:
+            self._unreachable = False
+            _LOGGER.info("%s is reachable again", self.name)
         self._clear_issue("pin_bond_lost")
         ver, hw = parse_cfg(raw)
         if ver is not None and (self.entry.data.get(CONF_VERSION), self.entry.data.get(CONF_HW_ID)) != (ver, hw):
@@ -241,14 +245,25 @@ class ConfigStore:
             except (OtaError, HomeAssistantError) as err:
                 _LOGGER.debug("%s: first read failed: %s", self.name, err)
                 if wait is None:
+                    self.mark_unreachable(err)
                     return
                 await asyncio.sleep(wait)
+
+    def mark_unreachable(self, err: BaseException, logged: bool = False) -> None:
+        """A read failed. Home Assistant's rule for unavailability: log it once (INFO), not on every failed attempt, and log
+        again when the sensor is back (set_raw). ``logged``: the caller has already logged the reason."""
+        if self._unreachable:
+            return
+        self._unreachable = True
+        if not logged:
+            _LOGGER.info("%s is unavailable: %s", self.name, err)
 
     def pairing_lost(self, err: Exception) -> None:
         """A read was refused for want of pairing. A bonded sensor was already paired again with its stored PIN by the
         connection helper if that was possible. Never an unhandled exception: a log line, a repair issue or a reauth flow,
         and the entities stay unavailable until a read works."""
         _LOGGER.warning("%s: %s", self.name, err)
+        self.mark_unreachable(err, logged=True)
         if not self.entry.data.get(CONF_PIN_BONDED):
             self._issue("pin_set")
         elif isinstance(self.entry.data.get(CONF_PIN), int):
@@ -277,7 +292,11 @@ class ConfigStore:
             self.pairing_lost(err)
             raise HomeAssistantError(f"{self.name}: {err}") from err
         except OtaError as err:
+            self.mark_unreachable(err)
             raise HomeAssistantError(f"{self.name}: {err}") from err
+        except HomeAssistantError as err:  # not connectable
+            self.mark_unreachable(err)
+            raise
         self.set_raw(raw)
 
     # -- writing -------------------------------------------------------
@@ -428,6 +447,14 @@ class ConfigStore:
 
     def flash_succeeded(self) -> None:
         ir.async_delete_issue(self.hass, DOMAIN, f"flash_failed_{self.address}")
+        self._clear_issue("flash_unconfirmed")
+
+    def flash_unconfirmed_cleared(self) -> None:
+        self._clear_issue("flash_unconfirmed")
+
+    def flash_unconfirmed(self) -> None:
+        """The image was sent but the new version could not be read back: it is not known whether the flash was applied."""
+        self._issue("flash_unconfirmed")
 
     def _clear_issue(self, key: str) -> None:
         ir.async_delete_issue(self.hass, DOMAIN, f"{key}_{self.entry.entry_id}")

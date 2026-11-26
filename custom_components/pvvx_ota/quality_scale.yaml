@@ -3,11 +3,11 @@
 rules:
   # Bronze
   action-setup:
-    status: exempt
-    comment: Services are entity services registered in the update platform (async_register_entity_service).
+    status: done
+    comment: The actions are registered once in async_setup (async_register_platform_entity_service, entity services on the update entity).
   appropriate-polling:
     status: done
-    comment: No polling loop; the installed version is read at startup, after a flash and every 12 h, firmware catalog cached.
+    comment: No polling loop. The sensor's version is read over Bluetooth at startup, after a flash and per the poll-interval option (default 3 days, "never" possible); the firmware catalog (HTTP) is refreshed every 12 h and cached.
   brands:
     status: done
     comment: The integration ships custom_components/pvvx_ota/brand/ (icon.png, icon@2x.png), which Home Assistant serves for custom integrations; hassfest accepts it.
@@ -48,7 +48,8 @@ rules:
     status: done
   # Silver
   action-exceptions:
-    status: done
+    status: todo
+    comment: Failures raise HomeAssistantError, but bad input (key format, PIN range, path not allowed) still raises HomeAssistantError instead of ServiceValidationError and the messages are not translated yet.
   config-entry-unloading:
     status: done
   docs-configuration-parameters:
@@ -61,6 +62,7 @@ rules:
     status: done
   log-when-unavailable:
     status: done
+    comment: A sensor that cannot be read is logged once at INFO (ConfigStore.mark_unreachable) and once when it works again; the entities show unavailable until a read works.
   parallel-updates:
     status: done
     comment: PARALLEL_UPDATES = 1 on the Bluetooth platforms (matches the shared lock); the update platform is 0 because its firmware queue needs concurrent calls to queue them.
@@ -73,3 +75,7 @@ rules:
   test-coverage:
     status: done
     comment: Branch coverage 95 % or more for every module, enforced in the Tests workflow (scripts/check_module_coverage.py).
+  # Gold / Platinum, not claimed
+  strict-typing:
+    status: todo
+    comment: mypy runs in CI but not in strict mode (untyped GATT client parameters, two modules with relaxed error codes).

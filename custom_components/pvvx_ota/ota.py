@@ -58,6 +58,10 @@ class OtaLinkLost(OtaError):
     """The Bluetooth link failed (BleakError/OSError) while sending: the sensor keeps its old firmware."""
 
 
+class OtaUnverified(OtaError):
+    """The end marker was sent, then the link stalled (no answer, link still up): the flash may or may not have been applied."""
+
+
 class OtaDeviceError(OtaError):
     """The device reported an OTA error status."""
 
@@ -71,12 +75,12 @@ class NotPvvxError(OtaError):
 
 
 class PairingRequiredError(OtaError):
-    """The device asks for pairing, i.e. it has a PIN set; PIN-protected sensors are not supported by this integration."""
+    """The device asks for pairing, i.e. it has a PIN set (and, for a bonded sensor, the bond does not work)."""
 
 
 PAIRING_HINT = (
-    "this sensor has a PIN set (it asks for pairing before it answers). PIN-protected sensors are not supported by "
-    "this integration; remove the PIN in TelinkMiFlasher to use it"
+    "this sensor has a PIN set (it asks for pairing before it answers). Pair it through an ESPHome proxy with the pairing "
+    "package (docs/pin-sensors.md), or remove the PIN in TelinkMiFlasher"
 )
 
 
@@ -172,10 +176,9 @@ async def read_cfg_raw(client: GattClient, timeout: float = CFG_TIMEOUT) -> byte
     """Read the config block (reply to command 0x55).
 
     Without a PIN, pvvx firmware uses no security at all (No_Security, plain read/write permissions). With a PIN set it
-    asks for pairing and gives the command and OTA characteristics ATT_PERMISSIONS_SECURE_CONN_RDWR. This integration
-    does not support PIN-protected sensors (design decision, not a Bluetooth impossibility: other tools can reach them
-    by pairing/reconnecting), so "insufficient encryption/authentication" on the first attempt is final:
-    PairingRequiredError, no pairing attempts."""
+    asks for pairing and gives the command and OTA characteristics ATT_PERMISSIONS_SECURE_CONN_RDWR. This function does
+    not pair: "insufficient encryption/authentication" is raised as PairingRequiredError, and the caller (device.py)
+    decides whether to encrypt with a stored bond or pair again through a proxy (pairing.py)."""
     return await _transact(client, b"\x55", timeout)
 
 
@@ -290,10 +293,23 @@ async def _release_link(client: GattClient) -> None:
         _LOGGER.debug("Releasing the link after the end marker ended with %s: %s", type(err).__name__, err)
 
 
+def link_dropped(client: GattClient, err: BaseException) -> bool:
+    """Whether a failed read after the end marker means the link is gone (the sensor rebooted) and not that it stalled.
+
+    Disconnect-type outcomes only: the client says it is not connected, or the error is a connection error (BleakError,
+    ConnectionError, EOFError). A timeout with the link still up is not a reboot."""
+    if getattr(client, "is_connected", True) is False:
+        return True
+    if isinstance(err, TimeoutError):
+        return False
+    return isinstance(err, (BleakError, ConnectionError, EOFError))
+
+
 async def _after_marker(client: GattClient) -> None:
     """Watch what the device does after the end marker.
 
-    Success: it checks the image CRC and reboots, so the link drops (reads fail).
+    Success: it checks the image CRC and reboots, so the link drops (reads fail with a disconnect).
+    Stall: reads time out with the link still up: OtaUnverified, nothing is claimed.
     Failure: it stays connected and reports a status code (e.g. "Firmware CRC check").
     """
     for second in range(int(END_MARKER_GRACE) + 1):
@@ -301,9 +317,14 @@ async def _after_marker(client: GattClient) -> None:
         try:
             async with asyncio.timeout(3):
                 st = await client.read_gatt_char(OTA_CHAR)
-        except Exception as err:  # noqa: BLE001 - any failure here means the link is gone
-            _LOGGER.debug("After the end marker the device went away (%s): it is rebooting", type(err).__name__)
-            return
+        except Exception as err:  # noqa: BLE001 - classified below
+            if link_dropped(client, err):
+                _LOGGER.debug("After the end marker the device went away (%s): it is rebooting", type(err).__name__)
+                return
+            raise OtaUnverified(
+                f"after the end marker the sensor stopped answering with the link still up ({type(err).__name__}); "
+                "the flash may or may not have been applied"
+            ) from err
         code = st[0] if st else 0
         _LOGGER.debug("Status %s s after the end marker: %s", second, code)
         if code:

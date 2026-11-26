@@ -51,13 +51,18 @@ class FakeClient:
         self.hang_write_at = hang_write_at
         self.no_reply = no_reply
         self.end_marker_raises = end_marker_raises
-        self.after_marker = after_marker  # reboot | stay | crc_error
+        self.after_marker = after_marker  # reboot | stay | crc_error | bleak | stall | stall_link_down
         self.marker_sent = False
         self.writes: list[bytes] = []
         self.responses: list[bool] = []
         self.status_reads = 0
         self.disconnected = False
+        self.connected_flag = True  # what is_connected reports
         self._cb = None
+
+    @property
+    def is_connected(self) -> bool:
+        return self.connected_flag
 
     async def pair(self):
         self.pair_calls += 1
@@ -144,6 +149,13 @@ class FakeClient:
         if self.marker_sent:
             if self.after_marker == "reboot":
                 raise ConnectionError("disconnected")
+            if self.after_marker == "bleak":
+                raise BleakError("Device disconnected")
+            if self.after_marker == "stall":  # no answer, the link stays up
+                raise TimeoutError()
+            if self.after_marker == "stall_link_down":  # no answer, and the client says the link is gone
+                self.connected_flag = False
+                raise TimeoutError()
             return bytearray([6 if self.after_marker == "crc_error" else 0])
         self.status_reads += 1
         # blocks written so far = len(writes) - 2 start commands

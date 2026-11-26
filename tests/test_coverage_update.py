@@ -377,3 +377,12 @@ async def test_poll_refresh_and_verify_turn_a_lost_bond_into_a_log_line_and_an_i
         with patch.object(upd.asyncio, "sleep", side_effect=lambda s: calls.append(s)):
             await entity._async_verify_after_flash()
         assert calls == []
+
+
+async def test_volatile_attributes_are_kept_out_of_the_recorder(setup):
+    hass, entry, entity = setup
+    excluded = entity._Entity__combined_unrecorded_attributes
+    # what changes with every advertisement or operation is excluded, including what the update component excludes itself
+    assert {"expected_proxy", "expected_proxy_rssi", "queued_position", "last_error", "in_progress"} <= excluded
+    # and what describes the sensor stays recorded
+    assert not {"installed_version", "latest_version", "hardware_id", "board", "beta_version"} & excluded

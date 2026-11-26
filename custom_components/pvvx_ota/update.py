@@ -60,6 +60,7 @@ from .firmware import (
 from .ota import (
     FirmwareError,
     OtaError,
+    OtaUnverified,
     PairingRequiredError,
     flash,
     fmt_version,
@@ -139,6 +140,10 @@ class PvvxUpdateEntity(UpdateEntity):
 
     _attr_has_entity_name = True
     _attr_name = None
+    # volatile or diagnostic: a new state row on every change would fill the database (the signal strength moves with every
+    # advertisement, the queue position with every operation). in_progress/update_percentage are already excluded by the
+    # update component itself.
+    _unrecorded_attributes = frozenset({"expected_proxy", "expected_proxy_rssi", "queued_position", "last_error"})
     _attr_should_poll = False  # own timers: the catalog (HTTP) and the device read (Bluetooth, an option) run apart
     _attr_device_class = UpdateDeviceClass.FIRMWARE
     _attr_supported_features = (
@@ -422,6 +427,7 @@ class PvvxUpdateEntity(UpdateEntity):
         except HomeAssistantError as err:
             # not connectable now: keep the last known version, retry next poll
             self._catalog_error = str(err)
+            self._store_cfg.mark_unreachable(err)  # one INFO line until it works again
             _LOGGER.debug("%s: version read skipped: %s", self._name, err)
 
     async def _async_read_device(self) -> None:
@@ -561,6 +567,7 @@ class PvvxUpdateEntity(UpdateEntity):
         assert shared.source is not None
         async with self._firmware_slot(shared):
             record: dict[str, Any] = {"started": dt_util.utcnow().isoformat(), "result": "failed before the transfer"}
+            expected: int | None = None  # the version byte this flash should leave on the sensor (None: a local file)
             notice = self._weak_signal_notice()
             if notice:
                 _LOGGER.warning("%s", notice)
@@ -593,6 +600,7 @@ class PvvxUpdateEntity(UpdateEntity):
                     self.async_write_ha_state()
                     record["link"] = describe_link(self.hass, client, self._address)
                     record["beta"] = bool(local is None and target.is_beta)
+                    expected = target.version if local is None else None
                     _LOGGER.info(
                         "%s: flashing %s via %s",
                         self._name,
@@ -613,8 +621,15 @@ class PvvxUpdateEntity(UpdateEntity):
                     _LOGGER.info("%s: flash finished in %.0f s", self._name, stats["seconds"])
             except OtaError as err:
                 text = f"{err} ({notice})" if notice else str(err)
-                record["result"] = f"failed: {text}"
-                self._store_cfg.flash_failed(text)
+                unverified = isinstance(err, OtaUnverified)
+                record["result"] = f"unverified: {text}" if unverified else f"failed: {text}"
+                self._store_cfg.flash_failed(
+                    text
+                )  # stays until a later flash, or the version check below, shows the new version
+                if unverified:
+                    # the image may have been applied: read the version back like after a normal flash
+                    self._quiet_until = asyncio.get_running_loop().time() + POST_FLASH_QUIET
+                    self._schedule_verify(expected, unverified=True)
                 raise HomeAssistantError(f"Flashing {self._name} failed: {text}") from err
             finally:
                 self._store_cfg.last_flash = record
@@ -646,12 +661,19 @@ class PvvxUpdateEntity(UpdateEntity):
         self.async_write_ha_state()
 
     # -- post-flash verification ---------------------------------------
-    async def _async_verify_after_flash(self) -> None:
-        """Read the new version (up to 8 tries, 45 s apart), then bring encryption back and flag differing settings."""
+    async def _async_verify_after_flash(self, expected: int | None = None, unverified: bool = False) -> None:
+        """Read the new version (up to 8 tries, 45 s apart), then bring encryption back and flag differing settings.
+
+        ``unverified``: the flash ended without a clear result (the link stalled after the end marker). Reading the expected
+        version then clears the failure issue; if the version cannot be read at all a repair issue says the flash may not
+        have been applied."""
         for attempt in range(8):
             try:
                 await self._async_read_device()
                 self.async_write_ha_state()
+                self._store_cfg.flash_unconfirmed_cleared()
+                if unverified and expected is not None and self._version is not None and self._version >= expected:
+                    self._store_cfg.flash_succeeded()
                 await self._store_cfg.async_after_flash()  # encryption flag back on, differing settings flagged
                 return
             except HomeAssistantError as err:
@@ -663,11 +685,14 @@ class PvvxUpdateEntity(UpdateEntity):
             "%s: could not confirm the new version after flashing; installed version left unchanged",
             self._name,
         )
+        self._store_cfg.flash_unconfirmed()
 
-    def _schedule_verify(self) -> None:
+    def _schedule_verify(self, expected: int | None = None, unverified: bool = False) -> None:
         @callback
         def _start(now: Any) -> None:
             # a plain lambda here ran in an executor thread ("loop is not the running loop") and never started the check
-            self._entry.async_create_background_task(self.hass, self._async_verify_after_flash(), "pvvx_ota_verify")
+            self._entry.async_create_background_task(
+                self.hass, self._async_verify_after_flash(expected, unverified), "pvvx_ota_verify"
+            )
 
         self.async_on_remove(async_call_later(self.hass, POST_FLASH_DELAY, _start))
