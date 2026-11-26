@@ -38,6 +38,7 @@
       "no_devices_found": "No pvvx sensors found nearby",
       "not_pvvx": "This device did not answer like pvvx custom firmware (it may be a different BTHome device or ATC1441 firmware).",
       "pin_protected": "This sensor has a PIN set and no proxy can pair it (no ESPHome proxy that hears it offers the pair_pvvx action, and none has a bond with it), so it was not added and is now ignored so that it is not offered again. Add the pairing package to a proxy (see docs/pin-sensors.md in the integration repository), then un-ignore it on the integration page (Ignored devices). Or remove the PIN in TelinkMiFlasher.",
+      "pin_protected_manual": "This sensor has a PIN set and no proxy can pair it (no ESPHome proxy that hears it offers the pair_pvvx action, and none has a bond with it), so it was not added. Add the pairing package to a proxy (see docs/pin-sensors.md in the integration repository) and try again, or remove the PIN in TelinkMiFlasher.",
       "reauth_successful": "The PIN was stored and the sensor is paired again.",
       "reconfigure_successful": "The PIN was stored.",
       "no_pin_sensor": "This sensor has no PIN pairing; there is nothing to configure."
@@ -100,7 +101,7 @@
     },
     "set_pin": {
       "name": "Set PIN",
-      "description": "WARNING: this integration does not support PIN-protected sensors, so with a PIN set it can no longer connect to the sensor (Home Assistant's proxies cannot enter the passkey either); only TelinkMiFlasher can remove the PIN. 0 turns the PIN off. The PIN is never stored or logged.",
+      "description": "WARNING: this integration does not support PIN-protected sensors, so with a PIN set it can no longer connect to the sensor (Home Assistant's proxies cannot enter the passkey either); only TelinkMiFlasher can remove the PIN. 0 turns the PIN off. This integration neither logs nor stores it (the action call itself passes through Home Assistant's event bus, see docs/pin-sensors.md).",
       "fields": {
         "pin": {
           "name": "PIN",

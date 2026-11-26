@@ -712,3 +712,64 @@ async def test_the_flasher_link_reaches_the_form_and_the_repair_issue(hass: Home
         await submit(hass, r["flow_id"], SECRET_PIN)
     issue = ir.async_get(hass).async_get_issue(DOMAIN, f"pin_pairing_failed_{MAC}")
     assert issue is not None and issue.translation_placeholders["flasher_url"] == FLASHER_URL
+
+
+# -- forgetting the bond when the entry is removed ----------------------------------------------------------
+
+
+def bonded_entry(hass):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=MAC,
+        title="ATC_000001",
+        data={
+            CONF_ADDRESS: MAC,
+            CONF_VERSION: 0x59,
+            CONF_HW_ID: 10,
+            CONF_PIN_BONDED: True,
+            CONF_BONDED_SCANNER: PROXY,
+            CONF_PIN: SECRET_PIN,
+        },
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+async def test_removing_a_bonded_entry_asks_its_proxy_to_forget_the_bond(hass: HomeAssistant):
+    calls: list[ServiceCall] = []
+
+    async def handler(call: ServiceCall):
+        calls.append(call)
+
+    hass.services.async_register("esphome", "proxy_1_forget_pvvx", handler)
+    entry = bonded_entry(hass)
+    scanner = SimpleNamespace(name="proxy-1 (AA:BB:CC:DD:EE:FF)", source=PROXY)
+    with patch.object(pairing.bluetooth, "async_current_scanners", return_value=[scanner]):
+        assert await hass.config_entries.async_remove(entry.entry_id)
+    assert [dict(c.data) for c in calls] == [{"mac": MAC}]  # the MAC only: never the PIN
+
+
+async def test_an_older_package_without_the_action_leaves_the_bond_and_says_so(hass: HomeAssistant, caplog):
+    caplog.set_level(logging.INFO)
+    entry = bonded_entry(hass)
+    scanner = SimpleNamespace(name="proxy-1", source=PROXY)
+    with patch.object(pairing.bluetooth, "async_current_scanners", return_value=[scanner]):
+        assert await hass.config_entries.async_remove(entry.entry_id)  # removal itself never fails
+    assert "bond" in caplog.text and "stays on it" in caplog.text
+    assert str(SECRET_PIN) not in caplog.text
+
+
+async def test_forgetting_survives_a_missing_proxy_and_a_failing_call(hass: HomeAssistant):
+    assert await pairing.async_forget_bond(hass, MAC, PROXY) is False  # no such scanner
+    hass.services.async_register("esphome", "proxy_1_forget_pvvx", AsyncMock(side_effect=RuntimeError("boom")))
+    scanner = SimpleNamespace(name="proxy-1", source=PROXY)
+    with patch.object(pairing.bluetooth, "async_current_scanners", return_value=[scanner]):
+        assert await pairing.async_forget_bond(hass, MAC, PROXY) is False
+
+
+async def test_a_sensor_without_a_bond_calls_nothing_on_removal(hass: HomeAssistant):
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=MAC, title="ATC", data={CONF_ADDRESS: MAC, CONF_VERSION: 0x59})
+    entry.add_to_hass(hass)
+    with patch.object(pairing, "async_forget_bond") as forget:
+        assert await hass.config_entries.async_remove(entry.entry_id)
+    forget.assert_not_called()

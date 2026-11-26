@@ -60,6 +60,7 @@ class ConfigStore:
         self._listeners: list[Callable[[], None]] = []
         self._pending: dict[str, int] = {}
         self._flush: asyncio.Task | None = None
+        self._writing = False  # the running flush has taken its batch and is on the wire: new changes need the next one
         self.flash_latest: Callable[[], Awaitable[None]] | None = (
             None  # set by the update entity (same path as Install)
         )
@@ -234,20 +235,25 @@ class ConfigStore:
                 await self.async_initial_read()
                 return
             except PairingRequiredError as err:
-                # a PIN will not go away by itself: no retry loop of Bluetooth connections. A bonded sensor was already paired
-                # again with its stored PIN by the connection helper if that was possible.
-                _LOGGER.warning("%s: %s", self.name, err)
-                if not self.entry.data.get(CONF_PIN_BONDED):
-                    self._issue("pin_set")
-                elif isinstance(self.entry.data.get(CONF_PIN), int):
-                    self._issue("pin_bond_lost")  # pairing again with the stored PIN did not help
-                # else: no PIN is stored; the connection helper started a reauth flow that asks for it
+                # a PIN will not go away by itself: no retry loop of Bluetooth connections
+                self.pairing_lost(err)
                 return
             except (OtaError, HomeAssistantError) as err:
                 _LOGGER.debug("%s: first read failed: %s", self.name, err)
                 if wait is None:
                     return
                 await asyncio.sleep(wait)
+
+    def pairing_lost(self, err: Exception) -> None:
+        """A read was refused for want of pairing. A bonded sensor was already paired again with its stored PIN by the
+        connection helper if that was possible. Never an unhandled exception: a log line, a repair issue or a reauth flow,
+        and the entities stay unavailable until a read works."""
+        _LOGGER.warning("%s: %s", self.name, err)
+        if not self.entry.data.get(CONF_PIN_BONDED):
+            self._issue("pin_set")
+        elif isinstance(self.entry.data.get(CONF_PIN), int):
+            self._issue("pin_bond_lost")  # pairing again with the stored PIN did not help
+        # else: no PIN is stored; the connection helper started a reauth flow that asks for it
 
     async def async_initial_read(self) -> None:
         """Authenticate and read the block (setup). Raises HomeAssistantError/OtaError when that is not possible."""
@@ -262,13 +268,16 @@ class ConfigStore:
         shared = get_shared(self.hass)
         if shared.flashing:
             raise HomeAssistantError("A firmware flash is running")
-        async with shared.lock, async_connected(self.hass, self.address, self.name) as client:
-            try:
+        try:
+            async with shared.lock, async_connected(self.hass, self.address, self.name) as client:
                 raw = await read_cfg_raw(client)
                 await self._read_calib(client, raw)
                 await self._auto_clock(client, raw)
-            except OtaError as err:
-                raise HomeAssistantError(f"{self.name}: {err}") from err
+        except PairingRequiredError as err:
+            self.pairing_lost(err)
+            raise HomeAssistantError(f"{self.name}: {err}") from err
+        except OtaError as err:
+            raise HomeAssistantError(f"{self.name}: {err}") from err
         self.set_raw(raw)
 
     # -- writing -------------------------------------------------------
@@ -280,16 +289,26 @@ class ConfigStore:
             raise HomeAssistantError("A firmware flash is running; settings cannot be changed now")
         self._pending.update(changes)
         self.async_notify()
-        if self._flush is None or self._flush.done():
+        if self._writing and self._flush is not None:
+            # a batch is on the wire already and cannot take these changes: let it finish (its result belongs to its own
+            # callers), then they go out in the next batch
+            try:
+                await asyncio.shield(self._flush)
+            except Exception:  # noqa: BLE001 - reported to the callers of that batch
+                pass
+        if self._pending and (self._flush is None or self._flush.done()):
             self._flush = self.hass.async_create_task(self._flush_batch())
-        await asyncio.shield(self._flush)
+        if self._flush is not None:
+            await asyncio.shield(self._flush)
 
     async def _flush_batch(self) -> None:
         await asyncio.sleep(BATCH_WINDOW)
         changes, self._pending = self._pending, {}
+        self._writing = True
         try:
             await self._write(changes)
         finally:
+            self._writing = False
             self.async_notify()  # drop the optimistic values: show what the sensor really has
 
     async def _write(self, changes: dict[str, int]) -> None:

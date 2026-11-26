@@ -20,7 +20,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN, FIRST_READ_STAGGER
+from .const import CONF_BONDED_SCANNER, CONF_PIN_BONDED, DOMAIN, FIRST_READ_STAGGER
 from .firmware import FirmwareSource
 
 if TYPE_CHECKING:
@@ -124,6 +124,10 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         ir.async_delete_issue(hass, DOMAIN, f"{key}_{entry.entry_id}")
     if entry.data.get(CONF_ADDRESS):
         ir.async_delete_issue(hass, DOMAIN, f"flash_failed_{entry.data[CONF_ADDRESS]}")
+    if entry.data.get(CONF_PIN_BONDED) and entry.data.get(CONF_BONDED_SCANNER) and entry.data.get(CONF_ADDRESS):
+        from .pairing import async_forget_bond
+
+        await async_forget_bond(hass, entry.data[CONF_ADDRESS], entry.data[CONF_BONDED_SCANNER])
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

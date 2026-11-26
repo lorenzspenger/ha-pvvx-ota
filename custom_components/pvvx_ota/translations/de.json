@@ -38,6 +38,7 @@
       "no_devices_found": "Keine pvvx-Sensoren in der Nähe gefunden",
       "not_pvvx": "Dieses Gerät hat nicht wie pvvx-Custom-Firmware geantwortet (vielleicht ein anderes BTHome-Gerät oder ATC1441-Firmware).",
       "pin_protected": "Dieser Sensor hat eine PIN gesetzt und kein Proxy kann ihn koppeln (kein ESPHome-Proxy, der ihn hört, bietet die Aktion pair_pvvx an, und keiner hat eine Kopplung mit ihm), daher wurde er nicht hinzugefügt und wird jetzt ignoriert, damit er nicht erneut angeboten wird. Füge einem Proxy das Koppel-Paket hinzu (siehe docs/pin-sensors.md im Repository der Integration) und hebe das Ignorieren dann auf der Integrationsseite auf (Ignorierte Geräte). Oder entferne die PIN mit TelinkMiFlasher.",
+      "pin_protected_manual": "Dieser Sensor hat eine PIN gesetzt und kein Proxy kann ihn koppeln (kein ESPHome-Proxy, der ihn hört, bietet die Aktion pair_pvvx an, und keiner hat eine Kopplung mit ihm), daher wurde er nicht hinzugefügt. Füge einem Proxy das Koppel-Paket hinzu (siehe docs/pin-sensors.md im Repository der Integration) und versuche es erneut, oder entferne die PIN mit TelinkMiFlasher.",
       "reauth_successful": "Die PIN wurde gespeichert und der Sensor ist neu gekoppelt.",
       "reconfigure_successful": "Die PIN wurde gespeichert.",
       "no_pin_sensor": "Dieser Sensor hat keine PIN-Kopplung; es gibt nichts zu konfigurieren."
@@ -100,7 +101,7 @@
     },
     "set_pin": {
       "name": "PIN setzen",
-      "description": "WARNUNG: Diese Integration unterstützt keine Sensoren mit PIN. Mit gesetzter PIN kann sie sich nicht mehr mit dem Sensor verbinden (auch die Proxys von Home Assistant können den Passkey nicht eingeben); nur TelinkMiFlasher kann die PIN entfernen. 0 schaltet die PIN aus. Die PIN wird weder gespeichert noch protokolliert.",
+      "description": "WARNUNG: Diese Integration unterstützt keine Sensoren mit PIN. Mit gesetzter PIN kann sie sich nicht mehr mit dem Sensor verbinden (auch die Proxys von Home Assistant können den Passkey nicht eingeben); nur TelinkMiFlasher kann die PIN entfernen. 0 schaltet die PIN aus. Diese Integration speichert und protokolliert sie nicht (der Aufruf selbst läuft über den Ereignisbus von Home Assistant, siehe docs/pin-sensors.md).",
       "fields": {
         "pin": {
           "name": "PIN",

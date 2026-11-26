@@ -45,6 +45,22 @@ async def test_failed_flash_raises_one_issue_per_sensor_and_a_repeat_updates_it(
         [c.stop() for c in ctx]
 
 
+async def test_link_loss_mid_flash_raises_the_issue_and_resets_the_entity(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    client = FakeClient(cfg=HW0, link_error_at=6)
+    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0)
+    try:
+        await failing_flash(hass)
+        issue = ir.async_get(hass).async_get_issue(DOMAIN, ISSUE)
+        assert issue and "link failed" in issue.translation_placeholders["error"]
+        st = hass.states.get("update.atc_000001")
+        assert st.attributes["in_progress"] is False
+        assert entry.runtime_data.last_flash["result"].startswith("failed")
+    finally:
+        [c.stop() for c in ctx]
+
+
 async def test_next_successful_flash_clears_the_issue(hass: HomeAssistant, enable_bluetooth, fast_batch):
     client = FakeClient(cfg=HW0, fail_status_at=3, status_code=2)
     entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0)

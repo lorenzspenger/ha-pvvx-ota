@@ -447,15 +447,14 @@ async def test_unignoring_after_removing_the_pin_allows_adding(hass: HomeAssista
     assert r["type"] is FlowResultType.CREATE_ENTRY
 
 
-async def test_manual_pick_of_a_pin_sensor_is_ignored_too(hass: HomeAssistant, enable_bluetooth):
-    from homeassistant.config_entries import SOURCE_IGNORE
-
+async def test_manual_pick_of_a_pin_sensor_is_refused_without_ignoring_it(hass: HomeAssistant, enable_bluetooth):
+    """Only discovery ignores a PIN sensor; a sensor the user picked by hand just gets the explanation."""
     with patch("custom_components.pvvx_ota.config_flow.async_discovered_service_info", return_value=[svc()]):
         r = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
         with flow_conn(FakeClient(needs_pairing=True)):
             r = await hass.config_entries.flow.async_configure(r["flow_id"], {CONF_ADDRESS: MAC})
-    assert r["type"] is FlowResultType.ABORT and r["reason"] == "pin_protected"
-    assert [e.source for e in hass.config_entries.async_entries(DOMAIN)] == [SOURCE_IGNORE]
+    assert r["type"] is FlowResultType.ABORT and r["reason"] == "pin_protected_manual"
+    assert hass.config_entries.async_entries(DOMAIN) == []
 
 
 async def test_connection_failure_does_not_ignore(hass: HomeAssistant, enable_bluetooth):

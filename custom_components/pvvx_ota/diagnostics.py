@@ -1,4 +1,4 @@
-"""Config entry diagnostics. Secrets (bindkey, PIN) are never stored by this integration; they are redacted anyway."""
+"""Config entry diagnostics. The bindkey is never stored by this integration. The PIN of a PIN-bonded sensor is stored in the config entry on purpose (to pair again when the proxy loses the bond), so the entry data is redacted here."""
 
 from __future__ import annotations
 

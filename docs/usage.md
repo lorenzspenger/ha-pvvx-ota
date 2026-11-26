@@ -89,7 +89,7 @@ hardware id, the update entity offers that beta (`latest_version` = `betaver`, r
 stable and the `beta_status` attribute / release summary says why ("no beta firmware for this hardware", "no beta is published", ...).
 A beta is only offered when it is newer than the stable release, so the switch never causes a downgrade by itself. The beta image goes
 through the same checks as stable ones: it must be for the same board as the stable image of this hardware, within the BLE OTA size
-limit, and pass the image CRC check. `betafw` entries may be full URLs (like pvvx's web flasher), but only on
+limit, carry the Telink `KNLT` signature and match its own header length (the image CRC is not checked here, the sensor does that, see below). `betafw` entries may be full URLs (like pvvx's web flasher), but only on
 `raw.githubusercontent.com/pvvx/...` or `github.com/pvvx/...`; anything else is ignored.
 
 ## Options
@@ -180,7 +180,7 @@ A flash can clear settings. The integration therefore saves them first and, once
 
 * *Download diagnostics* on a sensor's entry gives the entry data/options, the decoded config block (it holds no key), the firmware
   catalog summary, the timings and result of the last flash, the proxy the last connection really used and which device the entities
-  sit on. Bindkey/PIN-like fields are redacted, and this integration never stores them anyway.
+  sit on. Bindkey/PIN-like fields are redacted. The bindkey is never stored; the PIN of a PIN-bonded sensor is stored in its config entry (see [pin-sensors.md](pin-sensors.md)) and redacted here.
 * The user interface is available in English and German (`translations/de.json`). The selectable *values* of the selects (smiley,
   advertising type) stay English so that automations that use them keep working.
 
@@ -195,7 +195,7 @@ other settings (verified firmware only, read back, one operation at a time, neve
 | Advertising type (select) | disabled entity | Anything but **BTHome** stops HA's `bthome` integration from receiving the sensor's data. A repair issue is raised until it is BTHome again. |
 | Long range PHY / BT5 PHY (switches) | disabled entities | ESP32 proxies may not receive coded-PHY adverts: the sensor can vanish from HA until it is power cycled (long range resets on power-off). |
 | Encryption + bindkey | action `pvvx_ota.set_encryption` (`enable`, optional `key`) | Stores a key (generated if you give none) and switches encrypted adverts on, or switches them off. The **key is returned only in the action's response** (Developer tools > Actions shows it) and is never put in an entity, attribute or log. Home Assistant's BTHome entry for the sensor then needs that key; this integration does not touch it. A repair issue reminds you. |
-| PIN | action `pvvx_ota.set_pin` (`pin` 0..999999, `confirm: true`) | **Refuses unless `confirm: true`.** A PIN needs the proxy bond described in [pin-sensors.md](pin-sensors.md); setting or changing the PIN erases the sensor's bonds, so pair again afterwards (and with a bond-less PIN the integration can no longer connect). TelinkMiFlasher can remove the PIN. Write only: the PIN is never read back, stored or logged. |
+| PIN | action `pvvx_ota.set_pin` (`pin` 0..999999, `confirm: true`) | **Refuses unless `confirm: true`.** A PIN needs the proxy bond described in [pin-sensors.md](pin-sensors.md); setting or changing the PIN erases the sensor's bonds, so pair again afterwards (and with a bond-less PIN the integration can no longer connect). TelinkMiFlasher can remove the PIN. Write only: the PIN is never read back, and the action neither stores nor logs it (see the event-bus note in [pin-sensors.md](pin-sensors.md)). |
 | Reset to defaults (button) | disabled entity | Sets the config block to factory values (advertising type and encryption flag too), so HA's BTHome link may break. The previous settings are saved first and the *Restore previous settings* button offers them again (not the encryption flag). |
 
 Notes: values passed to actions can be visible in HA's event bus and automation traces if you call them from an automation; use
@@ -207,7 +207,8 @@ record raw GATT traffic; do not enable it while setting a key or PIN. This integ
 * Refuses to flash if the hardware id is unknown, the catalog entry is `?`, the reply isn't pvvx's, the image
   lacks the Telink `KNLT` signature, is shorter than its own header size field (truncated), exceeds the 128 KiB BLE-OTA limit, or the local file name does not match the board.
 * Per-write (10 s) and overall (20 min) timeouts; always disconnects, also on error.
-* After the last block the device verifies the CRC itself. The entity re-reads the version ~40 s later (up to 8 tries, 45 s apart);
+* The integration checks the image before it connects (signature, size limit, header length, board by file name); it does **not** compute
+  the image CRC itself. After the last block the device verifies the image CRC and refuses a bad image (it then keeps the old firmware). The entity re-reads the version ~40 s later (up to 8 tries, 45 s apart);
   if that fails the installed version is left unchanged (it may still be on the old image).
 
 ## Settings after a flash

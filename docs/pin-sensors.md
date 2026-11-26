@@ -21,7 +21,7 @@ proxy's ESPHome YAML (ESPHome 2026.10 or newer, ESP-IDF):
 
 ```yaml
 packages:
-  pvvx_pin_pairing: github://lorenzspenger/ha-pvvx-ota/esphome/pvvx_pin_pairing.yaml@main   # or @v0.23.0-beta.1
+  pvvx_pin_pairing: github://lorenzspenger/ha-pvvx-ota/esphome/pvvx_pin_pairing.yaml@main   # or @v0.23.0-beta.3
 
 esp32_ble:
   max_connections: 4   # the proxy's connection slots + other ble_clients + 1 for the pairer
@@ -37,6 +37,10 @@ When you add a PIN sensor and it refuses the first read, the flow asks for the P
 The PIN is kept in the entry (redacted in diagnostics, never logged) so that the pairing is repeated automatically if the proxy
 loses the bond. The proxy that hears the sensor best and offers the action is used. If none offers it, the sensor is ignored with a
 hint to come back here. The package adds two diagnostic entities to the proxy: *pvvx pairer busy* and *pvvx pair result*.
+
+When the sensor's entry is removed from Home Assistant, the integration calls the proxy's `forget_pvvx` action (package from v0.23.0-beta.3)
+so that the bond does not stay in the proxy's flash and in the sensor's small bond table. A proxy with an older package has no such
+action: the bond stays until you update the package or erase the proxy's flash, and the integration logs that at INFO.
 
 ### By hand: a fixed ble_client and a pair button
 
@@ -55,9 +59,15 @@ stored PIN; a lost bond then needs the button again).
   stored PIN: open the entry's three-dot menu, *Reconfigure*, to store it now, before any bond is lost.
 * If Home Assistant picks a different proxy for the connection, the operation fails with "not reachable via the paired proxy" instead
   of trying. The first command is delayed by up to about 3 s while the link is being encrypted.
-* Calling `esphome.<proxy>_pair_pvvx` puts the PIN into the call's service data, which Home Assistant's event bus and the proxy's
-  API carry (encrypted between Home Assistant and the proxy). It is not logged by this integration; do not enable event or service
-  debug logging while pairing.
+* **Where the PIN goes.** Calling `esphome.<proxy>_pair_pvvx` (and the `pvvx_ota.set_pin` action) puts the PIN into the call's service
+  data. Home Assistant core copies that data into a `call_service` event on its event bus (checked in `homeassistant/core.py`:
+  `ServiceRegistry.async_call` fires `EVENT_CALL_SERVICE` with `service_data`). Anything that subscribes to events (an admin's
+  websocket session, debug logging of events) can see it, and the recorder stores events unless they are excluded, so it can end up
+  in the database until the purge removes it. The integration itself never logs it and keeps it only in the config entry (redacted in
+  diagnostics). There is no supported way around the event for an action call; to keep it out of the database add
+  `recorder: exclude: event_types: [call_service]` to your configuration, and do not enable event or service debug logging while pairing.
+  The proxy keeps the PIN only in RAM during the pairing (zeroed afterwards); the connection between Home Assistant and the proxy is
+  encrypted when the API uses encryption.
 
 ## Known issue: the sensor refuses after a correct pairing
 

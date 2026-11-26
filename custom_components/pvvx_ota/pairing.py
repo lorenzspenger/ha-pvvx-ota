@@ -17,7 +17,15 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import slugify
 
-from .const import PAIR_ACTION, PAIR_AFTER_IDLE, PAIR_ATTEMPTS, PAIR_BUSY_APPEAR, PAIR_BUSY_TIMEOUT, PAIR_WAIT
+from .const import (
+    FORGET_ACTION,
+    PAIR_ACTION,
+    PAIR_AFTER_IDLE,
+    PAIR_ATTEMPTS,
+    PAIR_BUSY_APPEAR,
+    PAIR_BUSY_TIMEOUT,
+    PAIR_WAIT,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -155,3 +163,31 @@ async def async_repair(hass: HomeAssistant, address: str, source: str, pin: int)
         _LOGGER.debug("Pairing %s again through %s failed: %s", address, proxy.name, err)
         return False
     return True
+
+
+async def async_forget_bond(hass: HomeAssistant, address: str, source: str) -> bool:
+    """Ask the proxy ``source`` (the one that holds the bond) to forget its bond with the sensor, when its package offers the
+    ``forget_pvvx`` action (v0.23.0-beta.3 and later; an older package has no such action and keeps the bond, see
+    docs/pin-sensors.md). Best effort: True only if the call went through. The proxy need not hear the sensor, so it is
+    found among the Bluetooth scanners, not among the ones that hear it."""
+    for scanner in bluetooth.async_current_scanners(hass):
+        if str(getattr(scanner, "source", "")).upper() != source.upper():
+            continue
+        service = f"{slugify(node_name(str(getattr(scanner, 'name', '') or '')))}_{FORGET_ACTION}"
+        if not hass.services.has_service("esphome", service):
+            _LOGGER.info(
+                "The proxy %s offers no %s action (older pairing package): the bond of %s stays on it",
+                scanner.name,
+                FORGET_ACTION,
+                address,
+            )
+            return False
+        try:
+            await hass.services.async_call("esphome", service, {"mac": address}, blocking=True)
+        except Exception as err:  # noqa: BLE001 - best effort while an entry is being removed
+            _LOGGER.debug("Could not call esphome.%s: %s", service, type(err).__name__)
+            return False
+        _LOGGER.info("Asked the proxy %s to forget its bond with %s", scanner.name, address)
+        return True
+    _LOGGER.info("The proxy %s is not available: the bond of %s stays on it", source, address)
+    return False

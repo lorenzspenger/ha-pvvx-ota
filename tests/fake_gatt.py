@@ -3,6 +3,8 @@
 import asyncio
 import struct
 
+from bleak.exc import BleakError
+
 from custom_components.pvvx_ota.ota import CFG_CHAR, OTA_CHAR
 
 
@@ -19,7 +21,9 @@ class FakeClient:
         needs_pairing: bool = False,
         pair_fails: bool = False,
         pair_helps: bool = True,
+        link_error_at: int | None = None,
     ):
+        self.link_error_at = link_error_at  # OTA write number at which the link fails (BleakError)
         self.needs_pairing = needs_pairing  # config char refuses until paired
         self.pair_fails = pair_fails
         self.pair_helps = pair_helps
@@ -125,6 +129,8 @@ class FakeClient:
         assert char == OTA_CHAR
         if self.hang_write_at is not None and len(self.writes) == self.hang_write_at:
             await asyncio.sleep(3600)
+        if self.link_error_at is not None and len(self.writes) == self.link_error_at:
+            raise BleakError("Device disconnected")
         if data[:2] == b"\x02\xff":
             self.marker_sent = True
         if data[:2] == b"\x02\xff" and self.end_marker_raises:

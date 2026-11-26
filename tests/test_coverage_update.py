@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 
+from custom_components.pvvx_ota import store as store_mod
 from custom_components.pvvx_ota import update as upd
 from custom_components.pvvx_ota.firmware import Catalog, FirmwareError, FirmwareSource
 from custom_components.pvvx_ota.ota import OtaError
@@ -348,3 +349,31 @@ async def test_a_failed_flash_names_the_weak_signal_and_a_slow_link_is_a_normal_
         await entity.async_flash_latest()
     assert "weak signal: -80 dBm" in caplog.text  # warned before the transfer
     assert "failed" in str(entity._store_cfg.last_flash["result"])
+
+
+# -- a lost bond is never an unhandled exception ------------------------------------------------------
+
+
+def _refusing(*_a, **_k):
+    from custom_components.pvvx_ota.ota import PairingRequiredError
+
+    raise PairingRequiredError("the bond does not work any more")
+
+
+async def test_poll_refresh_and_verify_turn_a_lost_bond_into_a_log_line_and_an_issue(setup, caplog):
+    from homeassistant.helpers import issue_registry as ir
+
+    from custom_components.pvvx_ota.const import DOMAIN
+
+    hass, entry, entity = setup
+    with patch.object(upd, "async_connected", _refusing), patch.object(store_mod, "async_connected", _refusing):
+        await entity.async_update()  # poll: no exception
+        assert "does not work any more" in caplog.text
+        assert ir.async_get(hass).async_get_issue(DOMAIN, f"pin_set_{entry.entry_id}")
+        with pytest.raises(HomeAssistantError, match="does not work"):
+            await entry.runtime_data.async_refresh()  # a clean error for the button, not an unknown one
+        # the verify loop gives up at once instead of retrying 8 times
+        calls = []
+        with patch.object(upd.asyncio, "sleep", side_effect=lambda s: calls.append(s)):
+            await entity._async_verify_after_flash()
+        assert calls == []

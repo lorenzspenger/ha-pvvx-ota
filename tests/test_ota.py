@@ -89,6 +89,13 @@ async def test_flash_write_timeout():
         await ota.flash(c, image(), write_timeout=0.05)
 
 
+async def test_link_loss_during_the_transfer_is_an_ota_error():
+    c = FakeClient(link_error_at=5)
+    with pytest.raises(ota.OtaLinkLost, match="link failed"):
+        await ota.flash(c, image(400))
+    assert not c.marker_sent
+
+
 async def test_flash_total_timeout():
     c = FakeClient()
     with pytest.raises(ota.OtaTimeout):

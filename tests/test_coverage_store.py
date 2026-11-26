@@ -193,3 +193,31 @@ async def test_calibration_of_an_unknown_chip_is_refused(setup):
     client.coef = struct.pack("<IIhhIBB", 1, 1, 0, 0, 1, 0x70, 99)
     with pytest.raises(HomeAssistantError, match="not known"):
         await store.async_set_calibration(temp_offset=1.0)
+
+
+async def test_change_during_an_inflight_write_goes_into_the_next_batch(setup):
+    """A request that arrives while a batch is on the wire is written too, and its caller sees the real result."""
+    import asyncio
+
+    hass, client, entry, store = setup
+    gate, entered = asyncio.Event(), asyncio.Event()
+    orig = client.write_gatt_char
+
+    async def slow(char, data, response):
+        if data[:1] == b"\x55" and len(data) > 1 and not entered.is_set():
+            entered.set()
+            await gate.wait()  # the first batch hangs on the wire
+        return await orig(char, data, response)
+
+    client.write_gatt_char = slow
+    first = asyncio.create_task(store.async_request({"screen_off": 1}))
+    await entered.wait()
+    second = asyncio.create_task(store.async_request({"smiley": 2}))
+    await asyncio.sleep(0.2)
+    assert not second.done()  # waits for the batch on the wire instead of returning
+    gate.set()
+    await asyncio.gather(first, second)
+    await hass.async_block_till_done()
+    assert len(client.cfg_writes) == 2
+    assert store.value("screen_off") == 1 and store.value("smiley") == 2
+    assert not store._pending

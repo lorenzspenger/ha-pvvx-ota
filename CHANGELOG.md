@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.23.0-beta.3
+
+Git tag `v0.23.0-beta.3`, manifest version `0.23.0b3`.
+
+- **Link loss during a flash** (Bluetooth error while sending blocks or reading the status) is now an ordinary failed flash: the "flash failed"
+  repair issue is created, the entity leaves "installing" and the last-flash record says what happened. Before, the raw error escaped.
+- **A setting changed while another change is being written** is no longer dropped: it goes out in the next batch, and the caller sees the real result.
+- **Lost PIN bond during a poll, refresh or the post-flash check** is handled like at setup (log line, repair issue or re-pairing, entities unavailable),
+  not as an unhandled error; the post-flash check stops instead of retrying eight times.
+- **Adding a sensor by hand** that has a PIN and cannot be paired no longer puts it on the ignored list (only discovery does). New abort message.
+- **PIN documentation corrected**: the PIN is stored in the config entry on purpose (redacted in diagnostics); `docs/pin-sensors.md` now explains that
+  the pairing call passes through Home Assistant's event bus (and possibly the recorder) and how to keep it out.
+- **Bond cleanup**: removing a PIN sensor asks its proxy to forget the bond. Needs the updated ESPHome package (new `forget_pvvx` action; fully
+  backward compatible, an older package just keeps the bond and the integration logs it).
+- **Documentation fix**: the integration does not compute the Telink image CRC (earlier notes said it did); it checks signature, size limit,
+  header length and board, and the sensor verifies the CRC itself.
+
 ## 0.23.0-beta.2
 
 Git tag `v0.23.0-beta.2`, manifest version `0.23.0b2`.

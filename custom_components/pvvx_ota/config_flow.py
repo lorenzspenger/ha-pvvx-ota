@@ -129,7 +129,7 @@ class PvvxOtaConfigFlow(ConfigFlow, domain=DOMAIN):
         assert self._discovery is not None
         errors: dict[str, str] = {}
         if user_input is not None:
-            result = await self._async_verify_and_create(self._discovery, errors)
+            result = await self._async_verify_and_create(self._discovery, errors, discovered=True)
             if result is not None:
                 return result
         else:
@@ -141,7 +141,7 @@ class PvvxOtaConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     async def _async_verify_and_create(
-        self, info: BluetoothServiceInfoBleak, errors: dict[str, str]
+        self, info: BluetoothServiceInfoBleak, errors: dict[str, str], discovered: bool = False
     ) -> ConfigFlowResult | None:
         address = info.address.upper()
         name = display_name(self.hass, info)
@@ -180,8 +180,11 @@ class PvvxOtaConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="not_pvvx")
         except PairingRequiredError as err:
             _LOGGER.debug("PIN sensor %s has no usable bond via %s: %s", address, source, err)
-            # nobody can pair it: remember it as ignored (what the "Ignore" button does) so discovery stops
-            # offering it; after setting up pairing on a proxy (docs/pin-sensors.md) it can be un-ignored on the integration page
+            if not discovered:
+                # the user picked it by hand: tell them why it cannot be added, change nothing else
+                return self.async_abort(reason="pin_protected_manual")
+            # found by discovery and nobody can pair it: remember it as ignored (what the "Ignore" button does) so discovery
+            # stops offering it; after setting up pairing on a proxy (docs/pin-sensors.md) it can be un-ignored on the integration page
             await self.hass.config_entries.flow.async_init(
                 DOMAIN, context={"source": SOURCE_IGNORE}, data={"unique_id": address, "title": name}
             )

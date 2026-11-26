@@ -14,6 +14,8 @@ import struct
 from collections.abc import Callable, Iterator
 from typing import Any, Protocol
 
+from bleak.exc import BleakError
+
 _LOGGER = logging.getLogger(__name__)
 
 OTA_CHAR = "00010203-0405-0607-0809-0a0b0c0d2b12"
@@ -50,6 +52,10 @@ class OtaError(Exception):
 
 class OtaTimeout(OtaError):
     """A GATT operation or the whole flash took too long."""
+
+
+class OtaLinkLost(OtaError):
+    """The Bluetooth link failed (BleakError/OSError) while sending: the sensor keeps its old firmware."""
 
 
 class OtaDeviceError(OtaError):
@@ -252,6 +258,8 @@ async def _write(client: GattClient, data: bytes, response: bool, timeout: float
             await client.write_gatt_char(OTA_CHAR, data, response=response)
     except TimeoutError as err:
         raise OtaTimeout("GATT write timed out") from err
+    except (BleakError, OSError) as err:
+        raise OtaLinkLost(f"the link failed during the transfer: {type(err).__name__}: {err}") from err
 
 
 async def _status(client: GattClient, wt: float, where: str) -> None:
@@ -261,6 +269,8 @@ async def _status(client: GattClient, wt: float, where: str) -> None:
             st = await client.read_gatt_char(OTA_CHAR)
     except TimeoutError as err:
         raise OtaTimeout("status read timed out") from err
+    except (BleakError, OSError) as err:
+        raise OtaLinkLost(f"the link failed during the transfer: {type(err).__name__}: {err}") from err
     if st and st[0]:
         msg = OTA_ERRORS[st[0]] if st[0] < len(OTA_ERRORS) else str(st[0])
         raise OtaDeviceError(f"OTA error {where}: {msg}")

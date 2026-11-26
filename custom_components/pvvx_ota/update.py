@@ -60,6 +60,7 @@ from .firmware import (
 from .ota import (
     FirmwareError,
     OtaError,
+    PairingRequiredError,
     flash,
     fmt_version,
     parse_cfg,
@@ -425,11 +426,14 @@ class PvvxUpdateEntity(UpdateEntity):
 
     async def _async_read_device(self) -> None:
         shared = get_shared(self.hass)
-        async with shared.lock, async_connected(self.hass, self._address, self._name) as client:
-            try:
+        try:
+            async with shared.lock, async_connected(self.hass, self._address, self._name) as client:
                 raw = await read_cfg_raw(client)
-            except OtaError as err:
-                raise HomeAssistantError(f"{self._name}: {err}") from err
+        except PairingRequiredError as err:
+            self._store_cfg.pairing_lost(err)
+            raise HomeAssistantError(f"{self._name}: {err}") from err
+        except OtaError as err:
+            raise HomeAssistantError(f"{self._name}: {err}") from err
         ver, hw = parse_cfg(raw)
         self._store(ver, hw)
         self._store_cfg.set_raw(raw)
@@ -642,25 +646,28 @@ class PvvxUpdateEntity(UpdateEntity):
         self.async_write_ha_state()
 
     # -- post-flash verification ---------------------------------------
-    def _schedule_verify(self) -> None:
-        async def verify(_now: Any) -> None:
-            for attempt in range(8):
-                try:
-                    await self._async_read_device()
-                    self.async_write_ha_state()
-                    await self._store_cfg.async_after_flash()  # encryption flag back on, differing settings flagged
-                    return
-                except HomeAssistantError as err:
-                    _LOGGER.debug("%s: post-flash version check %s/8 failed: %s", self._name, attempt + 1, err)
-                    await asyncio.sleep(45)
-            _LOGGER.warning(
-                "%s: could not confirm the new version after flashing; installed version left unchanged",
-                self._name,
-            )
+    async def _async_verify_after_flash(self) -> None:
+        """Read the new version (up to 8 tries, 45 s apart), then bring encryption back and flag differing settings."""
+        for attempt in range(8):
+            try:
+                await self._async_read_device()
+                self.async_write_ha_state()
+                await self._store_cfg.async_after_flash()  # encryption flag back on, differing settings flagged
+                return
+            except HomeAssistantError as err:
+                if isinstance(err.__cause__, PairingRequiredError):
+                    return  # logged, reported and (if possible) re-paired by the read: retrying would not help
+                _LOGGER.debug("%s: post-flash version check %s/8 failed: %s", self._name, attempt + 1, err)
+                await asyncio.sleep(45)
+        _LOGGER.warning(
+            "%s: could not confirm the new version after flashing; installed version left unchanged",
+            self._name,
+        )
 
+    def _schedule_verify(self) -> None:
         @callback
         def _start(now: Any) -> None:
             # a plain lambda here ran in an executor thread ("loop is not the running loop") and never started the check
-            self._entry.async_create_background_task(self.hass, verify(now), "pvvx_ota_verify")
+            self._entry.async_create_background_task(self.hass, self._async_verify_after_flash(), "pvvx_ota_verify")
 
         self.async_on_remove(async_call_later(self.hass, POST_FLASH_DELAY, _start))

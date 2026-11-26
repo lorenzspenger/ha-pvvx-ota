@@ -5,7 +5,7 @@
 #
 #   packages:
 #     pvvx_pin_pairing: github://lorenzspenger/ha-pvvx-ota/esphome/pvvx_pin_pairing.yaml@main
-#   # (pin a tag instead of main once releases exist, for example @v0.23.0-beta.1)
+#   # (pin a tag instead of main once releases exist, for example @v0.23.0-beta.3)
 #
 #   esp32_ble:
 #     max_connections: 4   # the proxy's connection slots + other ble_clients + 1 for this pairer
@@ -89,6 +89,20 @@ ble_client:
 
 api:
   actions:
+    # forget_pvvx(mac): remove the bond with that sensor from this ESP32's flash (Home Assistant calls it when the sensor's entry is
+    # removed). Does nothing while a pairing runs.
+    - action: forget_pvvx
+      variables:
+        mac: string
+      then:
+        - lambda: |-
+            if (id(pvvx_pairer_busy)->state) return;
+            unsigned b[6];
+            if (sscanf(mac.c_str(), "%x:%x:%x:%x:%x:%x", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) != 6) return;
+            esp_bd_addr_t bda;
+            for (int i = 0; i < 6; i++) bda[i] = b[i] & 0xFF;
+            esp_ble_remove_bond_device(bda);
+            ESP_LOGI("pvvx", "forgot the bond with %s", mac.c_str());
     - action: pair_pvvx
       variables:
         mac: string
