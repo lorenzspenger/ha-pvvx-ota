@@ -681,7 +681,9 @@ async def test_encryption_key_only_in_response(hass: HomeAssistant, enable_bluet
         assert client.cfg[2] == SAMPLE[2] and client.cfg[4:] == SAMPLE[4:]
         assert key not in caplog.text and key not in dump_everything(hass) and key not in str(entry.data)
         assert key not in str(er.async_get(hass).entities.values())
-        assert ir.async_get(hass).async_get_issue(DOMAIN, f"encryption_changed_{entry.entry_id}")
+        assert not ir.async_get(hass).async_get_issue(DOMAIN, f"encryption_changed_{entry.entry_id}")
+        note = notifications(hass)[f"{DOMAIN}_encryption_changed_{entry.entry_id}"]
+        assert "{name}" not in note["title"] and "encryption" in note["title"]
         # a given key is used as is, and also never leaks
         res = await hass.services.async_call(
             DOMAIN,
@@ -743,7 +745,8 @@ async def test_reset_defaults_snapshot_readback_and_restore(hass: HomeAssistant,
         assert entry.data["cfg_snapshot"]["fields"]["adv_interval"] == 16  # saved before the reset
         store = entry.runtime_data
         assert cfg.get(store.raw, "adv_interval") == 1  # read back
-        assert ir.async_get(hass).async_get_issue(DOMAIN, f"reset_defaults_{entry.entry_id}")
+        assert not ir.async_get(hass).async_get_issue(DOMAIN, f"reset_defaults_{entry.entry_id}")
+        assert f"{DOMAIN}_reset_defaults_{entry.entry_id}" in notifications(hass)
         assert store.can_restore  # the restore button now offers the old settings
         await hass.services.async_call(
             "button", "press", {"entity_id": ent(hass, "button", "restore_config")}, blocking=True
@@ -1178,6 +1181,12 @@ def issue(hass, entry, key):
     return ir.async_get(hass).async_get_issue(DOMAIN, f"{key}_{entry.entry_id}")
 
 
+def notifications(hass):
+    from homeassistant.components.persistent_notification import _async_get_or_create_notifications
+
+    return _async_get_or_create_notifications(hass)
+
+
 async def test_encryption_restored_after_flash_without_a_new_key(
     hass: HomeAssistant, enable_bluetooth, fast_batch, caplog
 ):
@@ -1457,3 +1466,33 @@ def test_capabilities_from_the_stored_version_match_the_ones_of_a_block():
             block = bytes([0x55, version]) + bytes(cfg.MIN_LEN - 2)
             assert cfg.capabilities_for(version, hw) == cfg.capabilities(block, hw)
     assert cfg.capabilities_for(0x41, 10) == set() and cfg.capabilities_for(None, 10) == set()  # layout not verified
+
+
+async def test_switching_encryption_on_clears_a_failed_restore(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    client = FakeClient(cfg=SAMPLE)
+    entry, calls, ctx = await setup_cfg_entry(hass, client)
+    try:
+        entry.runtime_data._issue("encryption_restore_failed")
+        await hass.services.async_call(
+            DOMAIN,
+            "set_encryption",
+            {"entity_id": UPDATE, "enable": True, "key": KEY},
+            blocking=True,
+            return_response=True,
+        )
+        assert issue(hass, entry, "encryption_restore_failed") is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_old_notice_issues_are_removed_at_setup(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    client = FakeClient(cfg=SAMPLE)
+    entry, calls, ctx = await setup_cfg_entry(hass, client)
+    try:
+        for key in ("encryption_changed", "reset_defaults"):
+            entry.runtime_data._issue(key)
+        assert await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+        assert issue(hass, entry, "encryption_changed") is None and issue(hass, entry, "reset_defaults") is None
+    finally:
+        [c.stop() for c in ctx]

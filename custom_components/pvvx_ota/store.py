@@ -12,13 +12,14 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from bleak_retry_connector import BleakClientWithServiceCache
-from homeassistant.components import bluetooth
+from homeassistant.components import bluetooth, persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers import translation
 from homeassistant.util import dt as dt_util
 
 from . import calib as calibmod
@@ -456,6 +457,16 @@ class ConfigStore:
         """The image was sent but the new version could not be read back: it is not known whether the flash was applied."""
         self._issue("flash_unconfirmed")
 
+    async def _notify(self, key: str) -> None:
+        """A one-off notice (nothing to clear later): a dismissable notification, one per sensor and kind."""
+        strings = await translation.async_get_translations(self.hass, self.hass.config.language, "issues", {DOMAIN})
+        prefix = f"component.{DOMAIN}.issues.{key}."
+        title = strings.get(prefix + "title", key).replace("{name}", self.name)
+        message = strings.get(prefix + "description", "").replace("{name}", self.name)
+        persistent_notification.async_create(
+            self.hass, message, title=title, notification_id=f"{DOMAIN}_{key}_{self.entry.entry_id}"
+        )
+
     def _clear_issue(self, key: str) -> None:
         ir.async_delete_issue(self.hass, DOMAIN, f"{key}_{self.entry.entry_id}")
 
@@ -494,7 +505,9 @@ class ConfigStore:
         if cfgmod.get(echoed, "adv_crypto") != int(enable):
             raise ha_error("encryption_not_switched_on" if enable else "encryption_not_switched_off", name=self.name)
         self.set_raw(echoed)
-        self._issue("encryption_changed")
+        if enable:
+            self._clear_issue("encryption_restore_failed")
+        await self._notify("encryption_changed")
         result: dict[str, Any] = {"encryption": enable}
         if bindkey is not None:
             result["bindkey"] = bindkey.hex()
@@ -530,7 +543,7 @@ class ConfigStore:
             self.take_snapshot()  # the user may bring the old settings back with the restore button
             echoed = await send_command(client, b"\x56", 0x55)
         self.set_raw(echoed)
-        self._issue("reset_defaults")
+        await self._notify("reset_defaults")
 
     async def async_reboot(self) -> None:
         """Command 0x72: the sensor reboots when the link drops (pvvx "Set Reboot on disconnect"). Settings are kept.
