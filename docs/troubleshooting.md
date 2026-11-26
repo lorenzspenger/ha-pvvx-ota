@@ -20,7 +20,7 @@ A flash is judged on its first seconds: if fewer than about 15 blocks/s get thro
 * **"Could not connect (not a PIN problem)" / the sensor is unreachable.** pvvx sensors are connectable only part of the time and weak links fail. Check that a Bluetooth proxy hears it well (RSSI better than about -85 dBm), move a proxy closer and retry.
 * **Encryption was switched off by a flash.** A flash clears the advert-encryption flag but not the key. The integration switches the flag back on by itself (option *Restore encryption automatically*); if that fails a repair issue says so and the `pvvx_ota.set_encryption` action with your existing key fixes it.
 * **The flash is slow or fails.** Use a proxy close to the sensor and with a free connection slot. A failed flash leaves the old firmware running, raises the repair issue *firmware update failed* (it clears after the next successful flash) and records the error in the diagnostics (`last_flash`). Retry with the *Reflash firmware* button (disabled by default; enable it first).
-* **The sensor is silent after a flash.** Give it a few minutes; the integration checks again 90 s after the flash. If it stays silent, re-insert the battery.
+* **The sensor is silent after a flash.** Give it a few minutes; the integration checks again 30 s after the flash. If it stays silent, re-insert the battery.
 
 ## Other known issues
 

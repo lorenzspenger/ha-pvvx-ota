@@ -1,6 +1,6 @@
 # pvvx Thermometer OTA
 
-Home Assistant custom integration that updates and configures [pvvx ATC_MiThermometer](https://github.com/pvvx/ATC_MiThermometer) custom firmware over Home Assistant's own Bluetooth stack, so it works through ESPHome Bluetooth proxies without extra setup. **Public beta (0.23.0-beta.6).**
+Home Assistant custom integration that updates and configures [pvvx ATC_MiThermometer](https://github.com/pvvx/ATC_MiThermometer) custom firmware over Home Assistant's own Bluetooth stack, so it works through ESPHome Bluetooth proxies without extra setup. **Version 0.23.0.**
 
 > **Supported: pvvx sensors without a PIN.** Sensors with a PIN only work through an *experimental, not stable* workaround (an ESPHome package) that can fail on some sensors. For reliable use, remove the PIN with TelinkMiFlasher. See [PIN-protected sensors](docs/pin-sensors.md).
 
@@ -25,13 +25,13 @@ Home Assistant custom integration that updates and configures [pvvx ATC_MiThermo
 ## Install
 
 1. HACS → three-dot menu → *Custom repositories* → add `https://github.com/lorenzspenger/ha-pvvx-ota`, type *Integration*.
-2. Open the repository in HACS, enable **Show beta versions**, *Download*, restart Home Assistant. (Manual: copy `custom_components/pvvx_ota` into `<config>/custom_components/`.)
+2. Open the repository in HACS, *Download*, restart Home Assistant. (Manual: copy `custom_components/pvvx_ota` into `<config>/custom_components/`.)
 
 ## Setup
 
 *Settings → Devices & services → Add integration → pvvx Thermometer OTA*, or accept a discovered sensor (it advertises as `ATC_xxxxxx`). The entry confirms with one Bluetooth connection. The update entity appears on the sensor's existing BTHome device.
 
-## Known issues (beta)
+## Known issues
 
 * PIN sensors are experimental: a sensor can refuse even after a correct pairing ([details and fix](docs/pin-sensors.md)).
 * A slow or weak link aborts the flash on purpose; the old firmware keeps running. Move the proxy closer and retry.

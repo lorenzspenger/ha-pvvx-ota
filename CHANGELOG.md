@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.23.0
+
+Git tag `v0.23.0`, manifest version `0.23.0`. The first stable release, based on 0.23.0-beta.6: the betas brought the firmware update entity with queue and slow-link protection, the sensor settings, experimental PIN sensors through an ESPHome proxy, translated errors, strict typing and a long list of fixes from a full code review.
+
+- **Shorter wait after a flash**: no other connection is opened for 30 s (was 150 s), the first version check runs after 30 s (was 90 s) and is retried every 30 s (was 45 s), still 8 attempts. A pvvx sensor reboots in seconds; the fix that matters (release the link right after the end marker, no connection during the reboot) is unchanged.
+- **Reflash button text corrected**: a flash takes about 1.5 to 3 minutes on a good link and longer on a weak one, not 10 to 20 minutes.
+
 ## 0.23.0-beta.6
 
 Git tag `v0.23.0-beta.6`, manifest version `0.23.0b6`.

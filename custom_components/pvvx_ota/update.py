@@ -39,8 +39,10 @@ from .const import (
     DOMAIN,
     MIN_BATTERY_V,
     POLL_CHOICES,
+    POST_FLASH_ATTEMPTS,
     POST_FLASH_DELAY,
     POST_FLASH_QUIET,
+    POST_FLASH_RETRY,
     QUEUE_TIMEOUT,
     WEAK_RSSI,
 )
@@ -661,12 +663,12 @@ class PvvxUpdateEntity(UpdateEntity):
 
     # -- post-flash verification ---------------------------------------
     async def _async_verify_after_flash(self, expected: int | None = None, unverified: bool = False) -> None:
-        """Read the new version (up to 8 tries, 45 s apart), then bring encryption back and flag differing settings.
+        """Read the new version (up to POST_FLASH_ATTEMPTS tries, POST_FLASH_RETRY s apart), then bring encryption back and flag differing settings.
 
         ``unverified``: the flash ended without a clear result (the link stalled after the end marker). Reading the expected
         version then clears the failure issue; if the version cannot be read at all a repair issue says the flash may not
         have been applied."""
-        for attempt in range(8):
+        for attempt in range(POST_FLASH_ATTEMPTS):
             try:
                 await self._async_read_device()
                 self.async_write_ha_state()
@@ -678,8 +680,10 @@ class PvvxUpdateEntity(UpdateEntity):
             except HomeAssistantError as err:
                 if isinstance(err.__cause__, PairingRequiredError):
                     return  # logged, reported and (if possible) re-paired by the read: retrying would not help
-                _LOGGER.debug("%s: post-flash version check %s/8 failed: %s", self._name, attempt + 1, err)
-                await asyncio.sleep(45)
+                _LOGGER.debug(
+                    "%s: post-flash version check %s/%s failed: %s", self._name, attempt + 1, POST_FLASH_ATTEMPTS, err
+                )
+                await asyncio.sleep(POST_FLASH_RETRY)
         _LOGGER.warning(
             "%s: could not confirm the new version after flashing; installed version left unchanged",
             self._name,

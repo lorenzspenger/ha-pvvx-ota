@@ -76,7 +76,7 @@ class ReflashButton(PvvxConfigEntity, ButtonEntity):
     entity, post-flash verify). Never pressed automatically."""
 
     warning = (
-        "Takes about 10-20 minutes over a proxy; settings may reset (Restore previous settings undoes that); "
+        "Takes about 1.5 to 3 minutes on a good link (longer on a weak one); settings may reset (Restore previous settings undoes that); "
         "an interrupted flash keeps the old firmware."
     )
 

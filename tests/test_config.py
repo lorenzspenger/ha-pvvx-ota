@@ -945,7 +945,7 @@ async def test_reflash_button_flashes_even_when_up_to_date(hass: HomeAssistant, 
         reg = er.async_get(hass).async_get(eid)
         assert reg.entity_category == "config" and reg.disabled_by is None
         assert hass.states.get(eid).state != "unavailable"
-        assert "10-20 minutes" in hass.states.get(eid).attributes["warning"]
+        assert "1.5 to 3 minutes" in hass.states.get(eid).attributes["warning"]
         client.write_gatt_char = spy
         with patch("custom_components.pvvx_ota.update.async_call_later"):
             await hass.services.async_call("button", "press", {"entity_id": eid}, blocking=True)

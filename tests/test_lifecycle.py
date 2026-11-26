@@ -9,6 +9,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 
+from custom_components.pvvx_ota import update as upd
 from custom_components.pvvx_ota.const import DOMAIN
 
 from .fake_gatt import FakeClient
@@ -423,7 +424,7 @@ async def test_a_version_check_that_never_works_raises_the_may_not_have_been_app
             patch.object(type(entity), "_async_read_device", side_effect=HomeAssistantError("out of range")),
         ):
             await entity._async_verify_after_flash()
-        assert len(sleeps) == 8  # all attempts were made
+        assert sleeps == [upd.POST_FLASH_RETRY] * upd.POST_FLASH_ATTEMPTS  # all attempts, spaced as configured
         issue = reg.async_get_issue(DOMAIN, UNCONFIRMED.format(entry.entry_id))
         assert issue and issue.translation_key == "flash_unconfirmed" and not issue.is_fixable
         # a later successful read clears it again
@@ -454,3 +455,13 @@ async def test_a_normal_flash_end_to_end_raises_no_issue_and_the_check_confirms(
         assert hass.states.get("update.atc_000001").attributes["in_progress"] is False
     finally:
         [c.stop() for c in ctx]
+
+
+def test_a_sensor_gets_half_a_minute_to_reboot_and_the_check_retries_every_half_minute():
+    """A pvvx sensor reboots in seconds: the quiet time, the first check and the retry spacing are 30 s, 8 attempts."""
+    assert (upd.POST_FLASH_QUIET, upd.POST_FLASH_DELAY, upd.POST_FLASH_RETRY, upd.POST_FLASH_ATTEMPTS) == (
+        30,
+        30,
+        30,
+        8,
+    )
