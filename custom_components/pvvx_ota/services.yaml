@@ -13,6 +13,10 @@ flash_file:
       default: false
       selector:
         boolean:
+    skip_board_check:
+      default: false
+      selector:
+        boolean:
 
 flash_latest:
   target:

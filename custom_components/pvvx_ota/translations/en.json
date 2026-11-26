@@ -67,6 +67,10 @@
         "force": {
           "name": "Force",
           "description": "Flash even if the battery voltage is below 2.5 V (or unknown low)."
+        },
+        "skip_board_check": {
+          "name": "Skip board check",
+          "description": "DANGEROUS: do not check that the file is for this sensor's board. The file name is not compared with the board and no firmware list is needed, so this works without internet access. A wrong image can stop the sensor from working. The signature, size and header checks, the battery check and the slow-link stop still apply. Not used by Install, Reflash or Update all."
         }
       }
     },
@@ -114,6 +118,9 @@
     }
   },
   "exceptions": {
+    "catalog_needed_for_file": {
+      "message": "The firmware list is needed to check that the file is for this sensor's board, and it is not available: {error}. Try again later, or call the action again with skip_board_check: true if you are sure the file is the right one."
+    },
     "update_entity_not_ready": {
       "message": "The firmware update entity is not ready yet."
     },

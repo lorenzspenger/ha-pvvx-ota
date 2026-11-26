@@ -82,7 +82,11 @@ SERVICE_SET_PIN = "set_pin"
 
 # Home Assistant's own schema types come from probatio now while cv/vol still hand out voluptuous objects: typed loosely here
 _SCHEMAS: dict[str, dict[Any, Any]] = {
-    "flash_file": {vol.Required("path"): cv.string, vol.Optional("force", default=False): cv.boolean},
+    "flash_file": {
+        vol.Required("path"): cv.string,
+        vol.Optional("force", default=False): cv.boolean,
+        vol.Optional("skip_board_check", default=False): cv.boolean,
+    },
     "flash_latest": {
         vol.Optional("status_every", default=8): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
         vol.Optional("force", default=False): cv.boolean,
@@ -470,15 +474,22 @@ class PvvxUpdateEntity(UpdateEntity):
         """Entity service: flash the latest release (even if up to date) with a tunable status interval."""
         await self._async_flash(None, None, status_every, force)
 
-    async def async_flash_file(self, path: str, force: bool = False) -> None:
-        """Entity service: flash a local image (file name must name the device's board)."""
+    async def async_flash_file(self, path: str, force: bool = False, skip_board_check: bool = False) -> None:
+        """Entity service: flash a local image (the file name must name the device's board, unless ``skip_board_check``)."""
+        source = get_shared(self.hass).source
+        assert source is not None
+        if not skip_board_check:
+            try:
+                await source.async_catalog()  # live or the stored copy: the board is derived from it
+            except FirmwareError as err:
+                raise validation_error("catalog_needed_for_file", error=err) from err
         if not self.hass.config.is_allowed_path(path):
             raise validation_error("path_not_allowed", path=path)
         try:
             data = await self.hass.async_add_executor_job(Path(path).read_bytes)
         except OSError as err:
             raise validation_error("file_unreadable", path=path, error=err) from err
-        await self._async_flash(data, Path(path).name, force=force)
+        await self._async_flash(data, Path(path).name, force=force, skip_board_check=skip_board_check)
 
     def _battery_voltage(self) -> float | None:
         """Battery voltage from the linked BTHome device's voltage sensor (no extra Bluetooth traffic), None if unknown."""
@@ -565,7 +576,12 @@ class PvvxUpdateEntity(UpdateEntity):
         )
 
     async def _async_flash(
-        self, local: bytes | None, filename: str | None, status_every: int = 8, force: bool = False
+        self,
+        local: bytes | None,
+        filename: str | None,
+        status_every: int = 8,
+        force: bool = False,
+        skip_board_check: bool = False,
     ) -> None:
         shared = get_shared(self.hass)
         assert shared.source is not None
@@ -577,7 +593,10 @@ class PvvxUpdateEntity(UpdateEntity):
                 _LOGGER.warning("%s", notice)
             try:
                 self._check_battery(force)
-                catalog = await shared.source.async_catalog()
+                # a forced local file may go without any catalog: then there is no board to check it against
+                catalog: Catalog | None = None
+                if not (local is not None and skip_board_check):
+                    catalog = await shared.source.async_catalog()
                 async with async_connected(self.hass, self._address, self._name) as client:
                     t_conn = asyncio.get_running_loop().time()  # for the "time since connect" timing logs
                     raw = await read_cfg_raw(client)
@@ -588,14 +607,23 @@ class PvvxUpdateEntity(UpdateEntity):
                     self._store_cfg.set_raw(raw)
                     await self._store_cfg._auto_clock(client, raw)  # in this connection anyway; never fatal
                     self._store_cfg.take_snapshot()  # a flash can reset settings; the user may restore them
-                    board = catalog.board_for(hw)  # raises for unknown hardware ids
                     if local is None:
+                        assert catalog is not None
                         target = choose_target(catalog, hw, self.beta_wanted)
                         # the beta image already passed the board check in choose_target; size/CRC follow in download
                         fw = await shared.source.async_download(target.source or catalog.image_for(hw))
                     else:
                         assert filename is not None
-                        check_local_image(local, filename, board)
+                        if skip_board_check:
+                            _LOGGER.warning(
+                                "%s: flashing %s WITHOUT checking that it is the right board for this sensor (skip_board_check)",
+                                self._name,
+                                filename,
+                            )
+                            check_local_image(local, filename, None)
+                        else:
+                            assert catalog is not None
+                            check_local_image(local, filename, catalog.board_for(hw))  # raises for unknown hardware ids
                         fw = local
                     self._attr_update_percentage = 0
                     self._attr_in_progress = True

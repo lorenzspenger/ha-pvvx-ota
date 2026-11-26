@@ -67,6 +67,10 @@
         "force": {
           "name": "Erzwingen",
           "description": "Auch flashen, wenn die Batteriespannung unter 2,5 V liegt."
+        },
+        "skip_board_check": {
+          "name": "Board-Prüfung überspringen",
+          "description": "GEFÄHRLICH: Es wird nicht geprüft, ob die Datei zum Board dieses Sensors passt. Der Dateiname wird nicht mit dem Board verglichen und es wird keine Firmware-Liste benötigt, das funktioniert also ohne Internet. Ein falsches Image kann den Sensor unbrauchbar machen. Signatur-, Größen- und Header-Prüfung, Batterieprüfung und der Abbruch bei zu langsamer Verbindung gelten weiter. Wird von Installieren, Neu flashen und Alle aktualisieren nicht verwendet."
         }
       }
     },
@@ -114,6 +118,9 @@
     }
   },
   "exceptions": {
+    "catalog_needed_for_file": {
+      "message": "Die Firmware-Liste wird gebraucht, um zu prüfen, ob die Datei zum Board dieses Sensors passt, und sie ist nicht verfügbar: {error}. Versuche es später erneut oder rufe die Aktion mit skip_board_check: true auf, wenn du sicher bist, dass die Datei die richtige ist."
+    },
     "update_entity_not_ready": {
       "message": "Die Firmware-Update-Entität ist noch nicht bereit."
     },

@@ -9,9 +9,10 @@ from typing import TYPE_CHECKING
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
-from .firmware import FirmwareSource
+from .firmware import STORAGE_KEY, STORAGE_VERSION, FirmwareSource
 
 if TYPE_CHECKING:
     from .store import ConfigStore
@@ -39,5 +40,5 @@ def get_shared(hass: HomeAssistant) -> Shared:
     """Return the shared state."""
     shared: Shared = hass.data.setdefault(DOMAIN, Shared())
     if shared.source is None:
-        shared.source = FirmwareSource(async_get_clientsession(hass))
+        shared.source = FirmwareSource(async_get_clientsession(hass), Store(hass, STORAGE_VERSION, STORAGE_KEY))
     return shared

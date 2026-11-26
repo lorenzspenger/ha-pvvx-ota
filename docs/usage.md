@@ -65,6 +65,10 @@ Each sensor has options (Settings → Devices & services → pvvx → Configure)
 
 Firmware operations (Install, Reflash, `flash_latest`, `flash_file`) run one at a time. A second one is **queued** instead of refused: the update entity shows `in_progress` without a percentage and a `queued_position` attribute, first come first served, for up to 2 h. Settings → Updates → *Update all* therefore flashes your sensors one after another. Unloading an entry cancels its queued job.
 
+**Stored firmware list.** The last good `firmware.json` (and the release notes) is also kept in Home Assistant's storage (`pvvx_ota.firmware_catalog`). After a restart it is the first catalog, marked stale, and a live fetch is still tried with the normal retry and backoff. While GitHub is unreachable the stored copy is used for offering updates, the board check and `flash_file`; a download of an image that is not cached still fails. Diagnostics show the catalog's `source` (`live` or `stored`), when it was fetched and its age, and the log says once at INFO when the stored copy is in use.
+
+**Flashing a file without the board check.** `pvvx_ota.flash_file` normally derives the board from the firmware list (live or stored) and compares it with the file name, and it refuses when no list is available. With `skip_board_check: true` only that check is skipped (no list is needed, so this also works without internet access); the signature, size and header checks, the battery check (`force` is a separate option for that), the slow-link stop and everything else still apply. Every such flash logs a WARNING with the file and the sensor. A wrong image can stop a sensor from working: use it only for a file you know is right. Install, Reflash and *Update all* never skip the check, and there is no entity or switch for it.
+
 ## Example automations
 
 Night update of every sensor (the queue flashes them one after another; the battery check still protects each one):
