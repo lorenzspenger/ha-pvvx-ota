@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.0
+
+Git tag `v0.24.0`, manifest version `0.24.0`. Contains everything from 0.24.0-beta.1 and beta.2, plus:
+
+- **Clearer "could not connect" message when adding a sensor**: it no longer rules out a PIN and suggests removing the PIN if it keeps failing.
+
 ## 0.24.0-beta.2
 
 Git tag `v0.24.0-beta.2`, manifest version `0.24.0b2`.
