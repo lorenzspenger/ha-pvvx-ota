@@ -44,7 +44,7 @@
       "no_pin_sensor": "This sensor has no PIN pairing; there is nothing to configure."
     },
     "error": {
-      "cannot_connect": "Could not connect to the sensor (this is not a PIN problem: the connection itself did not complete within about 25 seconds). pvvx sensors are connectable only part of the time; a weak signal or a busy proxy also causes this. Wait a minute and try again.",
+      "cannot_connect": "Could not connect to the sensor (the connection did not complete within about 25 seconds). pvvx sensors are connectable only part of the time; a weak signal or a busy proxy also causes this. Wait a minute and try again. If it keeps failing and the sensor has a PIN, remove the PIN and add it again.",
       "unexpected": "Unexpected error: {error}. See the Home Assistant log (pvvx_ota) for the traceback.",
       "pin_wrong": "The proxy paired with the PIN, but {name} still refuses the connection. This is a problem on the sensor, usually an old pairing entry or old firmware. Fix it once with TelinkMiFlasher ({flasher_url}) near the sensor: 1) connect and update the firmware to the latest version, 2) set the PIN to 0 and save, then set your PIN again (this clears the sensor's pairing memory), 3) add the sensor here again.",
       "no_pairing_proxy": "No proxy that hears this sensor offers the pairing action any more. See docs/pin-sensors.md in the integration repository.",
@@ -137,7 +137,7 @@
       "message": "{name} ({address}) is not connectable right now: {reason}. pvvx sensors are connectable only part of the time; try again in a minute."
     },
     "connect_timeout": {
-      "message": "Could not connect to {name} ({address}) within {seconds} s: {reason}. This is not a PIN problem: the sensor did not accept a connection. A weak signal or a busy proxy can cause this; try again or move a proxy closer."
+      "message": "Could not connect to {name} ({address}) within {seconds} s: {reason}. The sensor did not accept a connection. A weak signal or a busy proxy can cause this; try again or move a proxy closer. If it keeps failing and the sensor has a PIN, remove the PIN."
     },
     "connect_failed": {
       "message": "Could not connect to {name} ({address}): {error}"

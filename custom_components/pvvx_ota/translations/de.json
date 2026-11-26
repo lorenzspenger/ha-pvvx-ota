@@ -44,7 +44,7 @@
       "no_pin_sensor": "Dieser Sensor hat keine PIN-Kopplung; es gibt nichts zu konfigurieren."
     },
     "error": {
-      "cannot_connect": "Verbindung zum Sensor nicht möglich (das liegt nicht an einer PIN: die Verbindung selbst kam innerhalb von etwa 25 Sekunden nicht zustande). pvvx-Sensoren sind nur zeitweise verbindbar; auch ein schwaches Signal oder ein ausgelasteter Proxy kann die Ursache sein. Bitte eine Minute warten und es erneut versuchen.",
+      "cannot_connect": "Verbindung zum Sensor nicht möglich (die Verbindung kam innerhalb von etwa 25 Sekunden nicht zustande). pvvx-Sensoren sind nur zeitweise verbindbar; auch ein schwaches Signal oder ein ausgelasteter Proxy kann die Ursache sein. Bitte eine Minute warten und es erneut versuchen. Klappt es weiterhin nicht und hat der Sensor eine PIN, entferne die PIN und füge ihn erneut hinzu.",
       "unexpected": "Unerwarteter Fehler: {error}. Den Traceback findest du im Home-Assistant-Log (pvvx_ota).",
       "pin_wrong": "Der Proxy hat mit der PIN gekoppelt, aber {name} verweigert die Verbindung weiterhin. Das Problem liegt am Sensor, meist ein alter Kopplungseintrag oder alte Firmware. Einmalig mit TelinkMiFlasher ({flasher_url}) in der Nähe des Sensors beheben: 1) verbinden und die Firmware auf die neueste Version aktualisieren, 2) die PIN auf 0 setzen und speichern, dann die PIN wieder setzen (das leert den Kopplungsspeicher des Sensors), 3) den Sensor hier erneut hinzufügen.",
       "no_pairing_proxy": "Kein Proxy, der diesen Sensor hört, bietet die Koppel-Aktion noch an. Siehe docs/pin-sensors.md im Repository der Integration.",
@@ -137,7 +137,7 @@
       "message": "{name} ({address}) ist gerade nicht verbindbar: {reason}. pvvx-Sensoren sind nur zeitweise verbindbar; versuche es in einer Minute erneut."
     },
     "connect_timeout": {
-      "message": "Verbindung zu {name} ({address}) nicht innerhalb von {seconds} s möglich: {reason}. Das ist kein PIN-Problem: Der Sensor hat keine Verbindung angenommen. Ein schwaches Signal oder ein ausgelasteter Proxy kann die Ursache sein; versuche es erneut oder stelle einen Proxy näher an den Sensor."
+      "message": "Verbindung zu {name} ({address}) nicht innerhalb von {seconds} s möglich: {reason}. Der Sensor hat keine Verbindung angenommen. Ein schwaches Signal oder ein ausgelasteter Proxy kann die Ursache sein; versuche es erneut oder stelle einen Proxy näher an den Sensor. Klappt es weiterhin nicht und hat der Sensor eine PIN, entferne die PIN."
     },
     "connect_failed": {
       "message": "Verbindung zu {name} ({address}) nicht möglich: {error}"
