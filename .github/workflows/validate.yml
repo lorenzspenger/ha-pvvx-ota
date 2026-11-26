@@ -13,7 +13,7 @@ jobs:
   hassfest:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # hassfest and the HACS action are meant to follow their moving refs (their documentation says @master / @main): new validation rules should
       # show up here before users hit them, so they are deliberately not pinned
       - uses: home-assistant/actions/hassfest@master
@@ -23,7 +23,7 @@ jobs:
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: hacs/action@main
         with:
           category: integration
