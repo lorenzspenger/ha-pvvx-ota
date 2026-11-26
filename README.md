@@ -1,6 +1,6 @@
 # pvvx Thermometer OTA
 
-Home Assistant custom integration that updates and configures [pvvx ATC_MiThermometer](https://github.com/pvvx/ATC_MiThermometer) custom firmware over Home Assistant's own Bluetooth stack, so it works through ESPHome Bluetooth proxies without extra setup. **Version 0.24.0-beta.1.**
+Home Assistant custom integration that updates and configures [pvvx ATC_MiThermometer](https://github.com/pvvx/ATC_MiThermometer) custom firmware over Home Assistant's own Bluetooth stack, so it works through ESPHome Bluetooth proxies without extra setup. **Version 0.24.0-beta.2.**
 
 > **Supported: pvvx sensors without a PIN.** Sensors with a PIN only work through an *experimental, not stable* workaround (an ESPHome package) that can fail on some sensors. For reliable use, remove the PIN with TelinkMiFlasher. See [PIN-protected sensors](docs/pin-sensors.md).
 
@@ -39,9 +39,12 @@ Home Assistant custom integration that updates and configures [pvvx ATC_MiThermo
 
 ## Documentation
 
-* [Usage](docs/usage.md): entities, options, actions, flashing details, supported boards and firmware
+* [Use cases](docs/use-cases.md), [supported devices](docs/supported-devices.md), [supported functions](docs/supported-functions.md)
+* [Usage](docs/usage.md): entities, options, actions and flashing details
+* [Examples](docs/examples.md): automations
+* [How data is updated](docs/data-updates.md), [known limitations](docs/known-limitations.md)
+* [Troubleshooting](docs/troubleshooting.md): diagnostics, logs, slow links, common problems
 * [PIN-protected sensors](docs/pin-sensors.md)
-* [Troubleshooting](docs/troubleshooting.md): diagnostics, logs, slow links, known issues
 * [Design notes](docs/design-notes.md), [display layouts](docs/display-layouts.md), [firmware versions](docs/version-layouts.md)
 
 Bug reports: [issues](https://github.com/lorenzspenger/ha-pvvx-ota/issues) (please attach the diagnostics download).

@@ -1,0 +1,45 @@
+{
+  "entity": {
+    "button": {
+      "refresh_config": {"default": "mdi:refresh"},
+      "reflash_firmware": {"default": "mdi:flash"},
+      "restore_config": {"default": "mdi:backup-restore"},
+      "reset_defaults": {"default": "mdi:restore-alert"},
+      "sync_clock": {"default": "mdi:clock-check-outline"}
+    },
+    "number": {
+      "adv_interval": {"default": "mdi:broadcast"},
+      "measure_interval": {"default": "mdi:timer-cog-outline"},
+      "temp_offset": {"default": "mdi:thermometer-plus"},
+      "humi_offset": {"default": "mdi:water-percent"}
+    },
+    "select": {
+      "rf_tx_power": {"default": "mdi:antenna"},
+      "temp_unit_display": {"default": "mdi:thermometer-lines"},
+      "smiley": {"default": "mdi:emoticon-outline"},
+      "adv_type": {"default": "mdi:broadcast"},
+      "screen_type": {"default": "mdi:monitor-dashboard"}
+    },
+    "switch": {
+      "show_battery": {"default": "mdi:battery-outline"},
+      "comfort_smiley": {"default": "mdi:emoticon-happy-outline"},
+      "screen_off": {"default": "mdi:monitor-off"},
+      "longrange": {"default": "mdi:radio-tower"},
+      "bt5phy": {"default": "mdi:bluetooth"},
+      "beta_firmware": {"default": "mdi:test-tube"},
+      "x100": {"default": "mdi:decimal"},
+      "time_am_pm": {"default": "mdi:clock-time-four-outline"},
+      "date_ddmm": {"default": "mdi:calendar"},
+      "show_weekday": {"default": "mdi:calendar-week"}
+    },
+    "sensor": {
+      "hw_ver": {"default": "mdi:chip"}
+    }
+  },
+  "services": {
+    "flash_file": {"service": "mdi:file-upload"},
+    "flash_latest": {"service": "mdi:cloud-download"},
+    "set_encryption": {"service": "mdi:lock"},
+    "set_pin": {"service": "mdi:form-textbox-password"}
+  }
+}

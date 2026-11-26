@@ -1,5 +1,5 @@
 # Integration quality scale (https://developers.home-assistant.io/docs/core/integration-quality-scale/).
-# Custom integrations are not graded; this file tracks where the integration stands against the bronze and silver rules.
+# Custom integrations are not graded by Home Assistant; this file tracks every rule of the scale, up to Platinum.
 rules:
   # Bronze
   action-setup:
@@ -13,15 +13,18 @@ rules:
     comment: The integration ships custom_components/pvvx_ota/brand/ (icon.png, icon@2x.png), which Home Assistant serves for custom integrations; hassfest accepts it.
   common-modules:
     status: done
-  config-flow-test-coverage:
-    status: done
   config-flow:
+    status: done
+  config-flow-test-coverage:
     status: done
   dependency-transparency:
     status: done
     comment: No external requirements; Bluetooth comes from HA's bluetooth stack.
   docs-actions:
     status: done
+  docs-conditions:
+    status: exempt
+    comment: The integration provides no conditions, so there is nothing to document.
   docs-high-level-description:
     status: done
   docs-installation-instructions:
@@ -29,6 +32,9 @@ rules:
   docs-removal-instructions:
     status: done
     comment: docs/usage.md section Removal.
+  docs-triggers:
+    status: exempt
+    comment: The integration provides no triggers, so there is nothing to document.
   entity-event-setup:
     status: done
   entity-unique-id:
@@ -66,19 +72,83 @@ rules:
   parallel-updates:
     status: done
     comment: PARALLEL_UPDATES = 1 on the Bluetooth platforms (matches the shared lock); the update platform is 0 because its firmware queue needs concurrent calls to queue them.
-  reconfiguration-flow:
-    status: done
-    comment: A PIN-bonded sensor can store or change its PIN (reconfigure); other sensors have no settings to reconfigure.
   reauthentication-flow:
     status: done
     comment: A PIN-bonded sensor whose bond is dead and has no stored PIN starts a reauth flow that asks for the PIN, pairs again through a proxy and stores it.
   test-coverage:
     status: done
     comment: Branch coverage 95 % or more for every module, enforced in the Tests workflow (scripts/check_module_coverage.py).
-  # Gold / Platinum, only what is checked
+  # Gold
+  devices:
+    status: done
+    comment: Every entity is on a device. It is the sensor's BTHome device when there is one (found by the Bluetooth address, see docs/known-limitations.md); otherwise the entities create a device of their own with the Bluetooth connection, name, manufacturer and the installed firmware version.
+  diagnostics:
+    status: done
+    comment: diagnostics.py gives the entry data and options, the decoded configuration block, the firmware list summary and the last flash; bindkey and PIN fields are redacted.
+  discovery:
+    status: done
+    comment: The manifest has Bluetooth matchers and the config flow has a Bluetooth discovery step that connects once to confirm.
+  discovery-update-info:
+    status: exempt
+    comment: A Bluetooth address is the unique id of the entry and never changes, so there is no network information to update when a known sensor is discovered again.
+  docs-data-update:
+    status: done
+    comment: docs/data-updates.md
+  docs-examples:
+    status: done
+    comment: docs/examples.md
+  docs-known-limitations:
+    status: done
+    comment: docs/known-limitations.md
+  docs-supported-devices:
+    status: done
+    comment: docs/supported-devices.md
+  docs-supported-functions:
+    status: done
+    comment: docs/supported-functions.md
+  docs-troubleshooting:
+    status: done
+    comment: docs/troubleshooting.md
+  docs-use-cases:
+    status: done
+    comment: docs/use-cases.md
+  dynamic-devices:
+    status: exempt
+    comment: Each config entry is one sensor, a single fixed device that lives and goes with its entry, so there are no devices to add later.
+  entity-category:
+    status: done
+    comment: The settings and buttons are in the Configuration category, the hardware version id sensor is Diagnostic, the update entity is primary.
+  entity-device-class:
+    status: done
+    comment: Set where one fits, namely the update entity (firmware), the Reboot button (restart), the Reflash button (update) and the advertising interval (duration). The other entities have no fitting class, and a temperature class on the offset would convert units of a difference.
+  entity-disabled-by-default:
+    status: done
+    comment: Only the update entity and the Restore previous settings button are enabled by default; every other entity is rarely needed or risky and starts disabled.
+  entity-translations:
+    status: done
+    comment: Entity names come from translation keys in strings.json (English and German); the update entity uses the device name.
   exception-translations:
     status: done
     comment: Every raised error is a translation key under exceptions in strings.json (en and de, tests/test_translations.py checks keys and placeholders).
+  icon-translations:
+    status: done
+    comment: icons.json has an icon for every entity and every action; the two entities whose device class has its own icon (update, restart) use that.
+  reconfiguration-flow:
+    status: done
+    comment: A PIN-bonded sensor can store or change its PIN (reconfigure); other sensors have no settings to reconfigure.
+  repair-issues:
+    status: done
+    comment: Repair issues for a failed or unconfirmed flash, a PIN set, a lost bond, encryption changed or not restored, advertising type changed, settings reset or different after a flash.
+  stale-devices:
+    status: exempt
+    comment: Each config entry is one sensor, a single fixed device that is removed with its entry, so no device can go stale.
+  # Platinum
+  async-dependency:
+    status: done
+    comment: There is no external library. Bluetooth goes through Home Assistant's asyncio Bluetooth stack (bleak and bleak-retry-connector) and the firmware list through its shared aiohttp session.
+  inject-websession:
+    status: done
+    comment: The only HTTP client is Home Assistant's shared aiohttp session, passed into FirmwareSource.
   strict-typing:
     status: done
-    comment: mypy strict passes on the package in CI with no per-module overrides (Home Assistant's schema types are named probatio's, so the voluptuous schemas are typed loosely in two places). Custom integrations ship no py.typed.
+    comment: mypy strict passes on the package in CI without per-module overrides. A custom integration cannot be listed in core's .strict-typing file or ship a py.typed library, so those two parts do not apply.

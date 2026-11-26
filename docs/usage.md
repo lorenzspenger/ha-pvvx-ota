@@ -71,38 +71,7 @@ Firmware operations (Install, Reflash, `flash_latest`, `flash_file`) run one at 
 
 ## Example automations
 
-Night update of every sensor (the queue flashes them one after another; the battery check still protects each one):
-
-```yaml
-automation:
-  - alias: "Update thermometer firmware at night"
-    triggers:
-      - trigger: time
-        at: "03:00:00"
-    actions:
-      - action: update.install
-        target:
-          entity_id:
-            - update.atc_aabbcc  # replace with your pvvx update entities
-            - update.atc_ddeeff
-```
-
-Warning when a sensor goes silent. That is what you see in Home Assistant when advert encryption was switched off by a flash (the BTHome entry still expects the key), when a sensor lost its battery contact, or when a failed flash left it unreachable. Repair issues (*Settings → Repairs*: *firmware update failed*, *encryption not switched back on*, *settings differ after the flash*) explain the cause; this automation just makes sure you notice. The repair issues are not exposed as entities, so the sensor's own BTHome reading is the trigger:
-
-```yaml
-automation:
-  - alias: "Thermometer went silent"
-    triggers:
-      - trigger: state
-        entity_id: sensor.atc_aabbcc_temperature  # your BTHome temperature entity
-        to: unavailable
-        for: "00:30:00"
-    actions:
-      - action: persistent_notification.create
-        data:
-          title: "Thermometer silent"
-          message: "{{ trigger.to_state.name }} has sent nothing for 30 minutes. Check Settings > Repairs for pvvx_ota issues."
-```
+See [examples.md](examples.md).
 
 ## Clock
 

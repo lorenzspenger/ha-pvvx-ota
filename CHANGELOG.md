@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.24.0-beta.2
+
+Git tag `v0.24.0-beta.2`, manifest version `0.24.0b2`.
+
+- **Icons for every entity and action**, shown in the entity list and the action picker.
+- **Device classes**: the Reflash button is shown as an update button and the advertising interval as a duration.
+- **A device created by the integration shows the installed firmware version** (when no BTHome device exists).
+- **New documentation pages**: use cases, supported devices, supported functions, how data is updated, known limitations and examples (linked from the README).
+- **Quality scale file lists every rule up to Platinum**, each marked done or exempt.
+
 ## 0.24.0-beta.1
 
 Git tag `v0.24.0-beta.1`, manifest version `0.24.0b1`.

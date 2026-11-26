@@ -14,7 +14,7 @@ Give one proxy the pairing package [`esphome/pvvx_pin_pairing.yaml`](../esphome/
 
 ```yaml
 packages:
-  pvvx_pin_pairing: github://lorenzspenger/ha-pvvx-ota/esphome/pvvx_pin_pairing.yaml@main   # or @v0.24.0-beta.1
+  pvvx_pin_pairing: github://lorenzspenger/ha-pvvx-ota/esphome/pvvx_pin_pairing.yaml@main   # or @v0.24.0-beta.2
 
 esp32_ble:
   max_connections: 4   # the proxy's connection slots + other ble_clients + 1 for the pairer

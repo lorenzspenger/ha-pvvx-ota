@@ -75,6 +75,8 @@ class ReflashButton(PvvxConfigEntity, ButtonEntity):
     Exactly the same path as Install / the flash_latest service (shared lock, settings snapshot, progress on the update
     entity, post-flash verify). Never pressed automatically."""
 
+    _attr_device_class = ButtonDeviceClass.UPDATE
+
     warning = (
         "Takes about 1.5 to 3 minutes on a good link (longer on a weak one); settings may reset (Restore previous settings undoes that); "
         "an interrupted flash keeps the old firmware."

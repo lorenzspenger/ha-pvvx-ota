@@ -170,7 +170,9 @@ class PvvxUpdateEntity(UpdateEntity):
         self._name = entry.title
         self._attr_unique_id = f"{self._address}_firmware"
         # on the BTHome device if there is one, else on our own; _registry_event re-links later
-        self._linked_id = attach_to_device(self, hass, self._address, entry.entry_id, entry.title)
+        self._linked_id = attach_to_device(
+            self, hass, self._address, entry.entry_id, entry.title, fmt_version(entry.data.get(CONF_VERSION))
+        )
         self._store_cfg = entry.runtime_data
         self._hw_id: int | None = entry.data.get(CONF_HW_ID)
         self._version: int | None = entry.data.get(CONF_VERSION)

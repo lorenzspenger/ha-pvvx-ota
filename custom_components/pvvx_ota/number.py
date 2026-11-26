@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from homeassistant.components.number import NumberEntity, NumberMode
+from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
 from homeassistant.const import CONF_ADDRESS, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -41,6 +41,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: PvvxConfigEntry, add: Ad
 
 class AdvIntervalNumber(PvvxConfigEntity, NumberEntity):
     field_key = "adv_interval"
+    _attr_device_class = NumberDeviceClass.DURATION
     _attr_mode = NumberMode.BOX
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
     _attr_native_min_value = ADV_UNIT_S

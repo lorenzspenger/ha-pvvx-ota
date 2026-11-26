@@ -29,7 +29,9 @@ def find_bthome_device(hass: HomeAssistant, address: str, own_entry_id: str) -> 
     return devices[0] if devices else None
 
 
-def attach_to_device(entity: Entity, hass: HomeAssistant, address: str, entry_id: str, title: str) -> str | None:
+def attach_to_device(
+    entity: Entity, hass: HomeAssistant, address: str, entry_id: str, title: str, sw_version: str | None = None
+) -> str | None:
     """Put the entity on the BTHome device of this sensor if there is one, else on a device of our own; returns the id of the
     BTHome device (None: our own).
 
@@ -41,6 +43,6 @@ def attach_to_device(entity: Entity, hass: HomeAssistant, address: str, entry_id
         entity.device_entry = device
         return device.id
     entity._attr_device_info = DeviceInfo(
-        connections={(CONNECTION_BLUETOOTH, address)}, name=title, manufacturer="pvvx"
+        connections={(CONNECTION_BLUETOOTH, address)}, name=title, manufacturer="pvvx", sw_version=sw_version
     )
     return None
