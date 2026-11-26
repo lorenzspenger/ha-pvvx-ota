@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.pvvx_ota import store as store_mod
@@ -18,6 +18,7 @@ from custom_components.pvvx_ota.ota import OtaError
 from .fake_gatt import FakeClient
 from .test_config import SAMPLE, fast_batch, setup_cfg_entry  # noqa: F401
 from .test_ha import bthome_device
+from .translated import raises_key
 
 ENTITY = "update.atc_000001"
 
@@ -81,14 +82,14 @@ async def test_poll_reports_catalog_and_connection_problems(setup, caplog):
         pytest.raises(HomeAssistantError, match="no answer"),
     ):
         await entity._async_read_device()
-    with pytest.raises(HomeAssistantError, match="unrecognised version reply"):
+    with raises_key("unrecognised_reply"):
         entity._store(None, None)
 
 
 async def test_flash_file_reports_an_unreadable_file(setup, tmp_path):
     hass, entry, entity = setup
     hass.config.allowlist_external_dirs.add(str(tmp_path))
-    with pytest.raises(HomeAssistantError, match="cannot read"):
+    with raises_key("file_unreadable", ServiceValidationError):
         await entity.async_flash_file(str(tmp_path / "missing.bin"))
 
 

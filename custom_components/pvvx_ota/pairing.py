@@ -18,6 +18,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import slugify
 
 from .const import (
+    DOMAIN,
     FORGET_ACTION,
     PAIR_ACTION,
     PAIR_AFTER_IDLE,
@@ -26,6 +27,7 @@ from .const import (
     PAIR_BUSY_TIMEOUT,
     PAIR_WAIT,
 )
+from .errors import ha_error
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,6 +73,13 @@ def pairing_proxies(hass: HomeAssistant, address: str) -> list[PairingProxy]:
 
 class PairConnectError(HomeAssistantError):
     """The proxy's pairer never reached the sensor (it was not connectable): nothing was paired."""
+
+    def __init__(self, proxy: str, address: str) -> None:
+        super().__init__(
+            translation_domain=DOMAIN,
+            translation_key="pair_connect_failed",
+            translation_placeholders={"proxy": proxy, "address": address},
+        )
 
 
 def _node_entity(hass: HomeAssistant, node: str, domain: str, label_end: str) -> str | None:
@@ -132,7 +141,7 @@ async def async_pair(
         except HomeAssistantError:
             raise
         except Exception as err:  # noqa: BLE001
-            raise HomeAssistantError(f"Could not call esphome.{proxy.service}: {type(err).__name__}") from err
+            raise ha_error("pair_call_failed", proxy=proxy.name, error=type(err).__name__) from err
         busy = busy_entity(hass, proxy.name)
         if busy is None:
             _LOGGER.debug("%s has no pairer-busy entity, waiting %.0f s", proxy.name, wait)
@@ -146,9 +155,7 @@ async def async_pair(
         _LOGGER.debug(
             "%s could not reach %s for pairing (attempt %d of %d)", proxy.name, address, attempt + 1, PAIR_ATTEMPTS
         )
-    raise PairConnectError(
-        f"{proxy.name} could not connect to {address} to pair it: pvvx sensors are connectable only part of the time. Try again."
-    )
+    raise PairConnectError(proxy.name, address)
 
 
 async def async_repair(hass: HomeAssistant, address: str, source: str, pin: int) -> bool:

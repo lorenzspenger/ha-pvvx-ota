@@ -113,6 +113,104 @@
       }
     }
   },
+  "exceptions": {
+    "update_entity_not_ready": {
+      "message": "The firmware update entity is not ready yet."
+    },
+    "paired_proxy_does_not_see_sensor": {
+      "message": "{name} is not reachable via the paired proxy ({proxy}): it does not see the sensor right now. A PIN sensor only answers through the proxy that holds its bond, so no connection was made. Try again later or move that proxy closer to the sensor."
+    },
+    "connected_via_wrong_proxy": {
+      "message": "{name} is not reachable via the paired proxy ({proxy}): the connection went through {link}. A PIN sensor only answers through the proxy that holds its bond, so nothing was sent. Try again later or move that proxy closer to the sensor."
+    },
+    "proxy_not_verifiable": {
+      "message": "{name}: this Home Assistant version does not say which proxy the connection runs through, so it cannot be checked against the paired proxy ({proxy}). Nothing was sent to the sensor."
+    },
+    "not_connectable": {
+      "message": "{name} ({address}) is not connectable right now: {reason}. pvvx sensors are connectable only part of the time; try again in a minute."
+    },
+    "connect_timeout": {
+      "message": "Could not connect to {name} ({address}) within {seconds} s: {reason}. This is not a PIN problem: the sensor did not accept a connection. A weak signal or a busy proxy can cause this; try again or move a proxy closer."
+    },
+    "connect_failed": {
+      "message": "Could not connect to {name} ({address}): {error}"
+    },
+    "pair_call_failed": {
+      "message": "Could not call the pairing action of {proxy}: {error}"
+    },
+    "pair_connect_failed": {
+      "message": "{proxy} could not connect to {address} to pair it. pvvx sensors are connectable only part of the time; try again."
+    },
+    "sensor_error": {
+      "message": "{name}: {error}"
+    },
+    "unrecognised_reply": {
+      "message": "{name}: the reply to the version request was not recognised. Is this pvvx custom firmware?"
+    },
+    "path_not_allowed": {
+      "message": "{path} is not in an allowed directory. Add its folder to allowlist_external_dirs in the Home Assistant configuration."
+    },
+    "file_unreadable": {
+      "message": "Cannot read {path}: {error}"
+    },
+    "battery_low": {
+      "message": "{name}: the battery is at {volts} V, below the limit of {limit} V. Replace the battery first, or call the action again with force: true."
+    },
+    "queue_timeout": {
+      "message": "{name}: waited more than {hours} h for the earlier firmware operations."
+    },
+    "flash_failed": {
+      "message": "Flashing {name} failed: {error}"
+    },
+    "pin_needs_confirmation": {
+      "message": "Refused: with a PIN set, Home Assistant and its proxies can no longer connect to the sensor unless a proxy holds a bond for it; only TelinkMiFlasher can remove the PIN. Call again with confirm: true if you really want this."
+    },
+    "flash_running": {
+      "message": "A firmware flash is running. Try again when it has finished."
+    },
+    "value_mismatch": {
+      "message": "{name}: the sensor stored {stored} instead of the requested {requested}."
+    },
+    "nothing_to_restore": {
+      "message": "There are no saved settings to restore."
+    },
+    "encryption_key_gone": {
+      "message": "The sensor holds no encryption key any more."
+    },
+    "encryption_not_switched_on": {
+      "message": "{name}: the sensor did not switch encryption on. The new key was stored; run the action again."
+    },
+    "encryption_not_switched_off": {
+      "message": "{name}: the sensor did not switch encryption off."
+    },
+    "bad_key": {
+      "message": "The key must be 32 hexadecimal characters (16 bytes)."
+    },
+    "key_not_accepted": {
+      "message": "{name}: the sensor did not accept the key. This board may not support encrypted advertisements."
+    },
+    "bad_pin": {
+      "message": "The PIN must be 0 (turns it off) or up to 6 digits."
+    },
+    "pin_not_stored": {
+      "message": "{name}: the sensor could not store the PIN."
+    },
+    "reboot_not_confirmed": {
+      "message": "{name}: the sensor did not confirm the reboot command ({error}). Older firmware may not have it."
+    },
+    "temperature_offset_mismatch": {
+      "message": "{name}: the sensor stored a temperature offset of {stored} instead of {requested}."
+    },
+    "humidity_offset_mismatch": {
+      "message": "{name}: the sensor stored a humidity offset of {stored} instead of {requested}."
+    },
+    "slope_changed": {
+      "message": "{name}: the sensor changed its slope factors. Check them with TelinkMiFlasher."
+    },
+    "sensor_not_heard": {
+      "message": "{name} ({address}) has not been heard by a connectable Bluetooth scanner yet."
+    }
+  },
   "issues": {
     "adv_type_changed": {
       "title": "{name}: advertising type is not BTHome",

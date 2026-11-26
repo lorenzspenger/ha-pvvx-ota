@@ -1,9 +1,8 @@
 """Options flow: battery threshold, automatic clock sync, automatic encryption restore."""
 
-import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.pvvx_ota.const import (
     CONF_AUTO_CLOCK_SYNC,
@@ -14,6 +13,7 @@ from custom_components.pvvx_ota.const import (
 from .fake_gatt import FakeClient
 from .test_battery import HW0, add_voltage, flash
 from .test_config import SAMPLE, fast_batch, setup_cfg_entry  # noqa: F401
+from .translated import raises_key
 
 
 async def test_options_form_defaults_save_and_keep_the_beta_switch(hass: HomeAssistant, enable_bluetooth):
@@ -57,7 +57,7 @@ async def test_battery_threshold_option_is_used(hass: HomeAssistant, enable_blue
     client = FakeClient(cfg=HW0)
     entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0, options={CONF_MIN_BATTERY_V: 3.2})
     try:
-        with pytest.raises(HomeAssistantError, match=r"3\.00 V is below 3\.20 V"):
+        with raises_key("battery_low", ServiceValidationError, volts="3.00", limit="3.20"):
             await flash(hass)
         assert not client.writes
         hass.config_entries.async_update_entry(entry, options={CONF_MIN_BATTERY_V: 2.0})

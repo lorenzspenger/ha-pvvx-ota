@@ -7,14 +7,16 @@ import logging
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from bleak.backends.device import BLEDevice
-from bleak.exc import BleakError
 from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
+from habluetooth import BluetoothReachabilityIntent, BluetoothScannerDevice
 from homeassistant.components import bluetooth
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 
+from .bt_internals import connected_scanner, pinned_client_class
 from .const import (
     CONF_ADDRESS,
     CONF_BONDED_SCANNER,
@@ -25,8 +27,10 @@ from .const import (
     ENCRYPT_SETTLE,
     PROBE_TIMEOUT,
 )
+from .errors import ha_error
 from .ota import NotPvvxError, OtaError, PairingRequiredError, read_cfg_raw
 from .pairing import async_repair, node_name
+from .shared import get_shared
 
 DISCONNECT_TIMEOUT = (
     8.0  # a proxy that never confirms the disconnect must not hold things up (or the link open) silently
@@ -34,52 +38,15 @@ DISCONNECT_TIMEOUT = (
 _LOGGER = logging.getLogger(__name__)
 CONNECT_TIMEOUT = 25.0  # seconds for the whole connect (all retries, all proxies); the flow must not hang for minutes
 
-try:
-    from habluetooth import BluetoothReachabilityIntent
-except ImportError:  # pragma: no cover - older HA
-    BluetoothReachabilityIntent = None  # type: ignore[assignment,misc]
-
 
 def _why_unreachable(hass: HomeAssistant, address: str) -> str:
-    if BluetoothReachabilityIntent is not None:
-        try:
-            return bluetooth.async_address_reachability_diagnostics(
-                hass, address, BluetoothReachabilityIntent.CONNECTION
-            )
-        except Exception:  # noqa: BLE001 - diagnostics are best effort
-            pass
-    return "no connectable adapter or proxy has seen it recently"
+    try:
+        return bluetooth.async_address_reachability_diagnostics(hass, address, BluetoothReachabilityIntent.CONNECTION)
+    except Exception:  # noqa: BLE001 - diagnostics are best effort
+        return "no connectable adapter or proxy has seen it recently"
 
 
-def pinned_client_class(source: str, address: str) -> type[BleakClientWithServiceCache]:
-    """A client class that connects through the scanner ``source`` only.
-
-    habluetooth's connect wrapper ignores the BLEDevice it is given and always takes the best-scored path, and Home
-    Assistant offers no supported way to pick a proxy. So the wrapper's choice (a private method) is replaced by "the
-    paths of this scanner only". If a habluetooth version does not have that method the plain class is returned and the
-    check after connecting stays the safety net."""
-    parent = BleakClientWithServiceCache
-    if not hasattr(parent, "_async_get_best_available_backend_and_device"):
-        return parent
-
-    class PinnedClient(parent):  # type: ignore[misc, valid-type]
-        def _async_get_best_available_backend_and_device(self, manager):
-            for found in sorted(
-                manager.async_scanner_devices_by_address(address, True),
-                key=lambda f: f.advertisement.rssi,
-                reverse=True,
-            ):
-                if getattr(found.scanner, "source", None) != source:
-                    continue
-                backend = self._async_get_backend_for_ble_device(manager, found.scanner, found.ble_device)
-                if backend:
-                    return backend
-            raise BleakError(f"the paired proxy {source} has no free connection to {address} right now")
-
-    return PinnedClient
-
-
-def scanner_device(hass: HomeAssistant, address: str, source: str):
+def scanner_device(hass: HomeAssistant, address: str, source: str) -> BluetoothScannerDevice | None:
     """The path through the scanner ``source`` (BluetoothScannerDevice), None if that proxy does not see the sensor now."""
     try:
         found = bluetooth.async_scanner_devices_by_address(hass, address, connectable=True)
@@ -88,7 +55,7 @@ def scanner_device(hass: HomeAssistant, address: str, source: str):
     return next((f for f in found if str(getattr(f.scanner, "source", "")).upper() == source.upper()), None)
 
 
-def entry_for(hass: HomeAssistant, address: str):
+def entry_for(hass: HomeAssistant, address: str) -> ConfigEntry | None:
     """The config entry of this sensor, None if there is none (e.g. while the config flow still verifies it)."""
     for entry in hass.config_entries.async_entries(DOMAIN):
         if str(entry.data.get(CONF_ADDRESS, "")).upper() == address.upper():
@@ -126,12 +93,12 @@ def bond_for(hass: HomeAssistant, address: str) -> tuple[bool, str | None, int |
     return False, None, None
 
 
-def connected_source(client) -> str | None:
+def connected_source(client: Any) -> str | None:
     """Source (MAC) of the proxy/adapter the connection really runs through, None if habluetooth does not say."""
-    return getattr(getattr(client, "_connected_scanner", None), "source", None)
+    return getattr(connected_scanner(client), "source", None)
 
 
-async def encrypt_link(client, name: str, t0: float) -> None:
+async def encrypt_link(client: Any, name: str, t0: float) -> None:
     """Make the link encrypted with the stored bond before the first command.
 
     A proxy does not start encryption by itself and drops the link after a refused write, so nothing may be sent before.
@@ -179,21 +146,14 @@ async def _open(
         # a PIN sensor only answers through the proxy that holds its bond: choose that path now, before connecting
         pinned = scanner_device(hass, address, bonded_scanner)
         if pinned is None:
-            raise HomeAssistantError(
-                f"{name} is not reachable via the paired proxy ({bonded_scanner}): it does not see the sensor right now. "
-                "A PIN sensor only answers through the proxy that holds its bond, so no connection was made. "
-                "Try again later or bring the paired proxy closer to the sensor."
-            )
+            raise ha_error("paired_proxy_does_not_see_sensor", name=name, proxy=bonded_scanner)
     device = (
         pinned.ble_device
         if pinned is not None
         else bluetooth.async_ble_device_from_address(hass, address, connectable=True)
     )
     if device is None:
-        raise HomeAssistantError(
-            f"{name} ({address}) is not connectable right now: {_why_unreachable(hass, address)}. "
-            "pvvx sensors are connectable only part of the time; try again in a minute."
-        )
+        raise ha_error("not_connectable", name=name, address=address, reason=_why_unreachable(hass, address))
 
     def _refresh() -> BLEDevice:
         if pinned is not None:
@@ -201,38 +161,36 @@ async def _open(
             return again.ble_device if again is not None else device
         return bluetooth.async_ble_device_from_address(hass, address, connectable=True) or device
 
-    client_class = (
-        pinned_client_class(bonded_scanner, address)
-        if pinned is not None and bonded_scanner
-        else BleakClientWithServiceCache
-    )
+    client_class: type[BleakClientWithServiceCache] = BleakClientWithServiceCache
+    if pinned is not None and bonded_scanner:
+        client_class = pinned_client_class(bonded_scanner, address) or BleakClientWithServiceCache
     try:
         async with asyncio.timeout(CONNECT_TIMEOUT):
             client = await establish_connection(client_class, device, name, ble_device_callback=_refresh)
     except TimeoutError as err:
         # not a PIN (a PIN sensor answers within seconds): the connection itself never completed
-        raise HomeAssistantError(
-            f"Could not connect to {name} ({address}) within {CONNECT_TIMEOUT:.0f} s: {_why_unreachable(hass, address)}. "
-            "This is not a PIN problem; the sensor did not accept a connection (pvvx sensors are connectable only part of "
-            "the time, a weak signal or a busy proxy also causes this). Try again, or bring a proxy closer."
+        raise ha_error(
+            "connect_timeout",
+            name=name,
+            address=address,
+            seconds=f"{CONNECT_TIMEOUT:.0f}",
+            reason=_why_unreachable(hass, address),
         ) from err
     except Exception as err:
-        raise HomeAssistantError(f"Could not connect to {name} ({address}): {err}") from err
+        raise ha_error("connect_failed", name=name, address=address, error=err) from err
     link = describe_link(hass, client, address)
     _LOGGER.debug("Connected to %s (%s) via %s", name, address, link)
-    from . import get_shared  # late import: the package imports this module lazily
 
     get_shared(hass).links[address] = link
     t0 = time.monotonic()  # the settle time below counts from the connection being up, not from the connect attempt
     try:
         if encrypt:
             source = connected_source(client)
+            if bonded_scanner and source is None:
+                # the path cannot be verified (and may not have been pinned): nothing is sent to a PIN sensor over it
+                raise ha_error("proxy_not_verifiable", name=name, proxy=bonded_scanner)
             if bonded_scanner and source and source.upper() != bonded_scanner.upper():
-                raise HomeAssistantError(
-                    f"{name} is not reachable via the paired proxy ({bonded_scanner}): the connection went through "
-                    f"{link}. A PIN sensor only answers through the proxy that holds its bond, so nothing was sent. "
-                    "Try again later or bring the paired proxy closer to the sensor."
-                )
+                raise ha_error("connected_via_wrong_proxy", name=name, proxy=bonded_scanner, link=link)
             await encrypt_link(client, name, t0)
     except BaseException:
         await disconnect_quietly(client, name)
@@ -240,7 +198,7 @@ async def _open(
     return client
 
 
-async def _verify_link(client, name: str) -> None:
+async def _verify_link(client: Any, name: str) -> None:
     """A bonded link must answer the config command (a cheap read) before anything else is sent over it: a bond the sensor
     no longer knows gives a refusal (error 5/15) or a link that never replies."""
     try:
@@ -303,7 +261,7 @@ async def async_connected(
         await disconnect_quietly(client, name)
 
 
-async def disconnect_quietly(client, name: str) -> None:
+async def disconnect_quietly(client: Any, name: str) -> None:
     """Drop the link now, bounded and logged: an open link keeps a rebooting sensor from advertising and the proxy slot busy."""
     try:
         async with asyncio.timeout(DISCONNECT_TIMEOUT):
@@ -315,10 +273,10 @@ async def disconnect_quietly(client, name: str) -> None:
         _LOGGER.debug("%s: disconnect ended with %s: %s", name, type(err).__name__, err)
 
 
-def describe_link(hass: HomeAssistant, client, address: str) -> str:
+def describe_link(hass: HomeAssistant, client: Any, address: str) -> str:
     """Name, source MAC and RSSI of the proxy/adapter the connection really runs through (not just the one that last
     heard an advertisement). habluetooth keeps the chosen path in a private attribute; if it is not there, say so."""
-    scanner = getattr(client, "_connected_scanner", None)
+    scanner = connected_scanner(client)
     if scanner is None:
         return "an unknown proxy (this habluetooth version does not expose the connected scanner)"
     source = getattr(scanner, "source", None)

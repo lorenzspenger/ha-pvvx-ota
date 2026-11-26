@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from homeassistant.components.number import NumberEntity, NumberMode
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -12,6 +11,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import calib as calibmod
 from .const import CONF_CALIB_KNOWN, CONF_VERSION, DOMAIN
 from .entity import PvvxConfigEntity, get_store, wanted
+from .shared import PvvxConfigEntry
 
 PARALLEL_UPDATES = 1  # one Bluetooth operation at a time, like the shared lock
 
@@ -19,7 +19,7 @@ PARALLEL_UPDATES = 1  # one Bluetooth operation at a time, like the shared lock
 ADV_UNIT_S = 0.0625  # the sensor counts in 62.5 ms
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, add: AddConfigEntryEntitiesCallback) -> None:
+async def async_setup_entry(hass: HomeAssistant, entry: PvvxConfigEntry, add: AddConfigEntryEntitiesCallback) -> None:
     store = get_store(hass, entry)
     ents: list[PvvxConfigEntity] = []
     if wanted(store, "adv_interval"):
@@ -47,7 +47,7 @@ class AdvIntervalNumber(PvvxConfigEntity, NumberEntity):
     _attr_native_max_value = 160 * ADV_UNIT_S
     _attr_native_step = ADV_UNIT_S
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
         super().__init__(hass, entry, "adv_interval", "Advertising interval", enabled_default=False)
 
     @property
@@ -70,7 +70,7 @@ class MeasureIntervalNumber(PvvxConfigEntity, NumberEntity):
     _attr_native_max_value = 25
     _attr_native_step = 1
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
         super().__init__(hass, entry, "measure_interval", "Measure interval", enabled_default=False)
 
     @property
@@ -93,7 +93,7 @@ class OffsetNumber(PvvxConfigEntity, NumberEntity):
         "Slope factors are not touched. Only change it if you compared the sensor with a reference."
     )
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, key: str, unit: str) -> None:
+    def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry, key: str, unit: str) -> None:
         self._key = key
         self._attr_native_unit_of_measurement = unit
         super().__init__(hass, entry, key, key, enabled_default=False)

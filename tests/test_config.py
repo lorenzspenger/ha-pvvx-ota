@@ -17,6 +17,7 @@ from custom_components.pvvx_ota.const import CONF_HW_ID, CONF_VERSION, DOMAIN
 
 from .fake_gatt import FakeClient
 from .test_ha import MAC, patch_catalog
+from .translated import raises_key
 
 # 0x55, fw 5.9, flg, flg2, flg3, event_adv_cnt, adv(1 s), meas(4), rf(169 = 0.04 dBm), latency, step, hw(LYWSD03MMC), avg
 # flg 0xA3 = lp_measures | show_batt | advertising_type 3 (BTHome); flg2 0x05 = smiley 5
@@ -455,7 +456,7 @@ async def test_no_write_while_flashing(hass: HomeAssistant, enable_bluetooth, fa
         store.async_notify()  # what _async_flash does
         await hass.async_block_till_done()
         assert hass.states.get(ent(hass, "switch", "screen_off")).state == "unavailable"
-        with pytest.raises(HomeAssistantError, match="flash is running"):
+        with raises_key("flash_running"):
             await store.async_request({"screen_off": 1})
         assert client.cfg_writes == [] and store.value("screen_off") == 0
     finally:
@@ -657,7 +658,7 @@ async def test_pin_validation_and_failure(hass: HomeAssistant, enable_bluetooth,
                 DOMAIN, "set_pin", {"entity_id": UPDATE, "pin": 1000000, "confirm": True}, blocking=True
             )
         client.pin_fails = True
-        with pytest.raises(HomeAssistantError, match="could not store"):
+        with raises_key("pin_not_stored"):
             await hass.services.async_call(
                 DOMAIN, "set_pin", {"entity_id": UPDATE, "pin": 1234, "confirm": True}, blocking=True
             )
@@ -766,9 +767,9 @@ async def test_reset_refused_on_unverified_firmware_and_while_flashing(
         assert client.resets == 0
         client.cfg = SAMPLE
         get_shared(hass).flashing = True
-        with pytest.raises(HomeAssistantError, match="flash is running"):
+        with raises_key("flash_running"):
             await store.async_reset_defaults()
-        with pytest.raises(HomeAssistantError, match="flash is running"):
+        with raises_key("flash_running"):
             await store.async_set_pin(1)
         assert client.resets == 0 and client.pin_writes == 0
     finally:
@@ -1082,7 +1083,7 @@ async def test_reboot_without_reply_is_a_failure(hass: HomeAssistant, enable_blu
             patch("custom_components.pvvx_ota.store.REBOOT_REPLY_TIMEOUT", 0.05),
             patch("custom_components.pvvx_ota.store.REBOOT_WATCH", 0.0),
         ):
-            with pytest.raises(HomeAssistantError, match="did not confirm"):
+            with raises_key("reboot_not_confirmed"):
                 store = entry.runtime_data
                 await store.async_reboot()
         assert client.reboots == 1
@@ -1100,7 +1101,7 @@ async def test_reboot_unavailable_and_refused_while_flashing(hass: HomeAssistant
         store.async_notify()
         await hass.async_block_till_done()
         assert hass.states.get(eid).state == "unavailable"
-        with pytest.raises(HomeAssistantError, match="flash is running"):
+        with raises_key("flash_running"):
             await store.async_reboot()
         assert client.reboots == 0
     finally:

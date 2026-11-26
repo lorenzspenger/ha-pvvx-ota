@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.pvvx_ota import calib as calibmod
 from custom_components.pvvx_ota import get_shared
@@ -16,6 +16,7 @@ from custom_components.pvvx_ota.const import CONF_SNAPSHOT
 
 from .fake_gatt import FakeClient
 from .test_config import SAMPLE, fast_batch, setup_cfg_entry  # noqa: F401
+from .translated import raises_key
 
 
 @pytest.fixture
@@ -60,11 +61,11 @@ async def test_refresh_and_write_refuse_while_a_flash_runs(setup):
     shared = get_shared(hass)
     shared.flashing = True
     try:
-        with pytest.raises(HomeAssistantError, match="flash is running"):
+        with raises_key("flash_running"):
             await store.async_refresh()
-        with pytest.raises(HomeAssistantError, match="settings were not changed"):
+        with raises_key("flash_running"):
             await store._write({"adv_interval": 20})
-        with pytest.raises(HomeAssistantError, match="nothing was changed"):
+        with raises_key("flash_running"):
             async with store._session():
                 pass
         assert not store.can_restore
@@ -78,7 +79,7 @@ async def test_refresh_and_write_refuse_while_a_flash_runs(setup):
 async def test_restore_needs_a_snapshot_and_after_flash_without_one_does_nothing(setup):
     hass, client, entry, store = setup
     hass.config_entries.async_update_entry(entry, data={k: v for k, v in entry.data.items() if k != CONF_SNAPSHOT})
-    with pytest.raises(HomeAssistantError, match="No saved settings"):
+    with raises_key("nothing_to_restore"):
         await store.async_restore()
     await store.async_after_flash()  # no snapshot: nothing to do
 
@@ -113,12 +114,12 @@ async def test_encryption_restore_paths(setup):
 
 async def test_set_encryption_refusals(setup):
     hass, client, entry, store = setup
-    with pytest.raises(HomeAssistantError, match="32 hex characters"):
+    with raises_key("bad_key", ServiceValidationError):
         await store.async_set_encryption(True, "nothex")
     # the sensor answers the key command with a different key
     with (
         patch.object(store_mod, "send_command", return_value=b"\x18" + bytes(16)),
-        pytest.raises(HomeAssistantError, match="did not accept the key"),
+        raises_key("key_not_accepted"),
     ):
         await store.async_set_encryption(True, "11" * 16)
     # the sensor stores the key but not the flag
@@ -126,7 +127,7 @@ async def test_set_encryption_refusals(setup):
 
     flg2 = cfgmod.FIELDS["adv_crypto"].index
     client.clamp = lambda b: bytes(b[:flg2]) + bytes([b[flg2] & ~0x08]) + bytes(b[flg2 + 1 :])
-    with pytest.raises(HomeAssistantError, match="did not switch encryption on.*run the action again"):
+    with raises_key("encryption_not_switched_on"):
         await store.async_set_encryption(True, "22" * 16)
     on = bytearray(SAMPLE)
     on[flg2] |= 0x08

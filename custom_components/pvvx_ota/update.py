@@ -16,20 +16,17 @@ from homeassistant.components.update import (
     UpdateEntity,
     UpdateEntityFeature,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant, SupportsResponse, callback
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.helpers.service import async_register_platform_entity_service
 from homeassistant.util import dt as dt_util
 
-from . import get_shared
 from .const import (
     CATALOG_POLL_INTERVAL,
     CATALOG_RETRY,
@@ -48,6 +45,7 @@ from .const import (
     WEAK_RSSI,
 )
 from .device import async_connected, describe_link, expected_path
+from .errors import ha_error, validation_error
 from .firmware import (
     HISTORY_PAGE,
     Catalog,
@@ -68,7 +66,8 @@ from .ota import (
     parse_version,
     read_cfg_raw,
 )
-from .registry import find_bthome_device
+from .registry import attach_to_device, find_bthome_device
+from .shared import PvvxConfigEntry, get_shared
 
 PARALLEL_UPDATES = 0  # not limited here: the firmware queue (shared lock) already runs one operation at a time, and
 # it needs the concurrent calls to queue them ("Update all"); a semaphore would hide the queue position
@@ -79,6 +78,21 @@ SERVICE_SET_ENCRYPTION = "set_encryption"
 SERVICE_SET_PIN = "set_pin"
 
 
+# Home Assistant's own schema types come from probatio now while cv/vol still hand out voluptuous objects: typed loosely here
+_SCHEMAS: dict[str, dict[Any, Any]] = {
+    "flash_file": {vol.Required("path"): cv.string, vol.Optional("force", default=False): cv.boolean},
+    "flash_latest": {
+        vol.Optional("status_every", default=8): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
+        vol.Optional("force", default=False): cv.boolean,
+    },
+    "set_encryption": {vol.Required("enable"): cv.boolean, vol.Optional("key"): cv.string},
+    "set_pin": {
+        vol.Required("pin"): vol.All(vol.Coerce(int), vol.Range(min=0, max=999999)),
+        vol.Optional("confirm", default=False): cv.boolean,
+    },
+}
+
+
 def async_register_services(hass: HomeAssistant) -> None:
     """Register entity services (called once from async_setup)."""
     async_register_platform_entity_service(
@@ -86,7 +100,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         SERVICE_FLASH_FILE,
         entity_domain="update",
-        schema={vol.Required("path"): cv.string, vol.Optional("force", default=False): cv.boolean},
+        schema=_SCHEMAS["flash_file"],
         func="async_flash_file",
         admin_only=True,
     )
@@ -95,10 +109,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         SERVICE_FLASH_LATEST,
         entity_domain="update",
-        schema={
-            vol.Optional("status_every", default=8): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
-            vol.Optional("force", default=False): cv.boolean,
-        },
+        schema=_SCHEMAS["flash_latest"],
         func="async_flash_latest",
         admin_only=True,
     )
@@ -108,7 +119,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         SERVICE_SET_ENCRYPTION,
         entity_domain="update",
-        schema={vol.Required("enable"): cv.boolean, vol.Optional("key"): cv.string},
+        schema=_SCHEMAS["set_encryption"],
         func="async_set_encryption",
         admin_only=True,
         supports_response=SupportsResponse.OPTIONAL,
@@ -118,10 +129,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         SERVICE_SET_PIN,
         entity_domain="update",
-        schema={
-            vol.Required("pin"): vol.All(vol.Coerce(int), vol.Range(min=0, max=999999)),
-            vol.Optional("confirm", default=False): cv.boolean,
-        },
+        schema=_SCHEMAS["set_pin"],
         func="async_set_pin",
         admin_only=True,
         supports_response=SupportsResponse.OPTIONAL,
@@ -129,7 +137,7 @@ def async_register_services(hass: HomeAssistant) -> None:
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
+    hass: HomeAssistant, entry: PvvxConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
 ) -> None:
     """Add the update entity."""
     async_add_entities([PvvxUpdateEntity(hass, entry)])
@@ -150,28 +158,19 @@ class PvvxUpdateEntity(UpdateEntity):
         UpdateEntityFeature.INSTALL | UpdateEntityFeature.PROGRESS | UpdateEntityFeature.RELEASE_NOTES
     )
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
         self._entry = entry
         self._address: str = entry.data[CONF_ADDRESS]
         self._name = entry.title
         self._attr_unique_id = f"{self._address}_firmware"
-        # Since HA 2026.10 a device has exactly one config entry, so we cannot join the BTHome device.
-        # Instead the entity is attached to it: device_entry set, no device_info (as the template
-        # helper does). Without a BTHome device we create our own; _watch_registry re-links later.
-        self._device = find_bthome_device(hass, self._address, entry.entry_id)
-        self._linked_id = self._device.id if self._device else None
-        if self._device is not None:
-            self.device_entry = self._device
-        else:
-            self._attr_device_info = DeviceInfo(
-                connections={(CONNECTION_BLUETOOTH, self._address)}, name=entry.title, manufacturer="pvvx"
-            )
+        # on the BTHome device if there is one, else on our own; _registry_event re-links later
+        self._linked_id = attach_to_device(self, hass, self._address, entry.entry_id, entry.title)
         self._store_cfg = entry.runtime_data
         self._hw_id: int | None = entry.data.get(CONF_HW_ID)
         self._version: int | None = entry.data.get(CONF_VERSION)
         self._catalog: Catalog | None = None
         self._catalog_error: str | None = None
-        self._queued_task: asyncio.Task | None = None  # set while this entity waits in the firmware queue
+        self._queued_task: asyncio.Task[None] | None = None  # set while this entity waits in the firmware queue
         self._quiet_until = 0.0  # event-loop time until which async_update opens no connection (after a flash)
         self._cancel_device_poll: Callable[[], None] | None = None
         self._poll_seconds_set: int | None = -1  # the interval the timer runs with (-1: none scheduled yet)
@@ -236,7 +235,7 @@ class PvvxUpdateEntity(UpdateEntity):
         if not shared.source.history:
             self._schedule_catalog_retry(attempt + 1)
 
-    async def _entry_updated(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    async def _entry_updated(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
         """The entry changed (beta switch, poll interval, a version stored by a read): re-evaluate what is offered, and
         reschedule the device read only if its interval option changed (an unrelated update must not restart the timer)."""
         if self._poll_seconds() != self._poll_seconds_set:
@@ -437,16 +436,16 @@ class PvvxUpdateEntity(UpdateEntity):
                 raw = await read_cfg_raw(client)
         except PairingRequiredError as err:
             self._store_cfg.pairing_lost(err)
-            raise HomeAssistantError(f"{self._name}: {err}") from err
+            raise ha_error("sensor_error", name=self._name, error=err) from err
         except OtaError as err:
-            raise HomeAssistantError(f"{self._name}: {err}") from err
+            raise ha_error("sensor_error", name=self._name, error=err) from err
         ver, hw = parse_cfg(raw)
         self._store(ver, hw)
         self._store_cfg.set_raw(raw)
 
     def _store(self, ver: int | None, hw: int | None) -> None:
         if ver is None:
-            raise HomeAssistantError(f"{self._name}: unrecognised version reply (not pvvx custom firmware?)")
+            raise ha_error("unrecognised_reply", name=self._name)
         self._version, self._hw_id = ver, hw
         self.hass.config_entries.async_update_entry(
             self._entry, data={**self._entry.data, CONF_VERSION: ver, CONF_HW_ID: hw}
@@ -464,11 +463,11 @@ class PvvxUpdateEntity(UpdateEntity):
     async def async_flash_file(self, path: str, force: bool = False) -> None:
         """Entity service: flash a local image (file name must name the device's board)."""
         if not self.hass.config.is_allowed_path(path):
-            raise HomeAssistantError(f"{path} is not in an allowed directory (allowlist_external_dirs)")
+            raise validation_error("path_not_allowed", path=path)
         try:
             data = await self.hass.async_add_executor_job(Path(path).read_bytes)
         except OSError as err:
-            raise HomeAssistantError(f"cannot read {path}: {err}") from err
+            raise validation_error("file_unreadable", path=path, error=err) from err
         await self._async_flash(data, Path(path).name, force=force)
 
     def _battery_voltage(self) -> float | None:
@@ -500,10 +499,7 @@ class PvvxUpdateEntity(UpdateEntity):
             _LOGGER.warning("%s: battery voltage unknown (no BTHome voltage sensor); flashing anyway", self._name)
         elif volts < limit:
             if not force:
-                raise HomeAssistantError(
-                    f"{self._name}: battery {volts:.2f} V is below {limit:.2f} V; replace the battery first "
-                    "(or pass force: true to flash_latest/flash_file)"
-                )
+                raise validation_error("battery_low", name=self._name, volts=f"{volts:.2f}", limit=f"{limit:.2f}")
             _LOGGER.warning("%s: battery %.2f V is below %.2f V, flashing anyway (force)", self._name, volts, limit)
         else:
             _LOGGER.debug("%s: battery %.2f V", self._name, volts)
@@ -526,9 +522,7 @@ class PvvxUpdateEntity(UpdateEntity):
                     await shared.lock.acquire()
                 acquired = True
             except TimeoutError as err:
-                raise HomeAssistantError(
-                    f"{self._name}: waited more than {QUEUE_TIMEOUT / 3600:.0f} h for the earlier firmware operations"
-                ) from err
+                raise ha_error("queue_timeout", name=self._name, hours=f"{QUEUE_TIMEOUT / 3600:.0f}") from err
             finally:
                 shared.waiting.remove(self)
                 self._queued_task = None
@@ -630,7 +624,7 @@ class PvvxUpdateEntity(UpdateEntity):
                     # the image may have been applied: read the version back like after a normal flash
                     self._quiet_until = asyncio.get_running_loop().time() + POST_FLASH_QUIET
                     self._schedule_verify(expected, unverified=True)
-                raise HomeAssistantError(f"Flashing {self._name} failed: {text}") from err
+                raise ha_error("flash_failed", name=self._name, error=text) from err
             finally:
                 self._store_cfg.last_flash = record
                 shared.flashing = False
@@ -649,10 +643,7 @@ class PvvxUpdateEntity(UpdateEntity):
     async def async_set_pin(self, pin: int, confirm: bool = False) -> dict[str, Any]:
         """Entity service. With a PIN set, HA's Bluetooth stack/proxies (and so this integration) cannot connect any more."""
         if confirm is not True:
-            raise ServiceValidationError(
-                "Refused: with a PIN set, Home Assistant, its proxies and this integration can no longer connect to the "
-                "sensor; only TelinkMiFlasher can remove it. Call again with confirm: true if you really want this."
-            )
+            raise validation_error("pin_needs_confirmation")
         return await self._store_cfg.async_set_pin(pin)
 
     @callback

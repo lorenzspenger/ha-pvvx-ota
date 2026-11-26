@@ -2,33 +2,26 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 from homeassistant.components.bluetooth import async_ble_device_from_address
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import CoreState, HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.typing import ConfigType
 
 from .const import CONF_BONDED_SCANNER, CONF_PIN_BONDED, DOMAIN, FIRST_READ_STAGGER
-from .firmware import FirmwareSource
+from .errors import not_ready
+from .pairing import async_forget_bond
+from .shared import PvvxConfigEntry, Shared, get_shared
+from .store import ConfigStore
+from .update import async_register_services
 
-if TYPE_CHECKING:
-    from .store import ConfigStore
-
-    type PvvxConfigEntry = ConfigEntry[ConfigStore]  # runtime_data: the sensor's ConfigStore
-else:
-    PvvxConfigEntry = ConfigEntry
+__all__ = ["DOMAIN", "PvvxConfigEntry", "Shared", "get_shared"]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,29 +39,8 @@ PLATFORMS = [Platform.UPDATE, Platform.NUMBER, Platform.SELECT, Platform.SWITCH,
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
-@dataclass
-class Shared:
-    """Integration-wide state: one flash/read at a time, one firmware cache. Per-entry state is entry.runtime_data."""
-
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    source: FirmwareSource | None = None
-    flashing: bool = False  # a flash is running: no configuration writes
-    waiting: list = field(default_factory=list)  # update entities queued for the firmware lock, in order
-    links: dict = field(default_factory=dict)  # address -> description of the last connection's proxy
-
-
-def get_shared(hass: HomeAssistant) -> Shared:
-    """Return the shared state."""
-    shared = hass.data.setdefault(DOMAIN, Shared())
-    if shared.source is None:
-        shared.source = FirmwareSource(async_get_clientsession(hass))
-    return shared
-
-
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register the entity service."""
-    from .update import async_register_services
-
     async_register_services(hass)
     return True
 
@@ -76,14 +48,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: PvvxConfigEntry) -> bool:
     """Set up a sensor. No Bluetooth connection is made here: the entities are decided from the stored board and version, and
     the first read of the configuration block runs in the background (ConfigStore.async_first_read)."""
-    from .store import ConfigStore
-
     address: str = entry.data[CONF_ADDRESS]
     # cheap test-before-setup: some connectable scanner has to have heard the sensor lately
     if async_ble_device_from_address(hass, address, connectable=True) is None:
-        raise ConfigEntryNotReady(
-            f"{entry.title} ({address}) has not been heard by a connectable Bluetooth scanner yet"
-        )
+        raise not_ready("sensor_not_heard", name=entry.title, address=address)
     store = ConfigStore(hass, entry)
     entry.runtime_data = store
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -92,7 +60,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: PvvxConfigEntry) -> bool
     return True
 
 
-def _schedule_first_read(hass: HomeAssistant, entry: ConfigEntry, store: ConfigStore) -> None:
+def _schedule_first_read(hass: HomeAssistant, entry: PvvxConfigEntry, store: ConfigStore) -> None:
     """One background read per entry: right away when HA is already running (reload, new entry), else after HA has started,
     the entries spaced FIRST_READ_STAGGER apart so that they do not all hit the proxies at once."""
     if hass.state is CoreState.running:
@@ -111,7 +79,7 @@ def _schedule_first_read(hass: HomeAssistant, entry: ConfigEntry, store: ConfigS
         entry.async_on_unload(unsub)
 
 
-def _remove_empty_own_devices(hass: HomeAssistant, entry: ConfigEntry) -> None:
+def _remove_empty_own_devices(hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
     """Drop devices this entry created earlier that no longer hold an entity (entity moved to BTHome's)."""
     dev_reg, ent_reg = dr.async_get(hass), er.async_get(hass)
     for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
@@ -119,18 +87,16 @@ def _remove_empty_own_devices(hass: HomeAssistant, entry: ConfigEntry) -> None:
             dev_reg.async_remove_device(device.id)
 
 
-async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def async_remove_entry(hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
     """The entry is gone for good: so are its repair issues."""
     for key in ISSUE_KEYS:
         ir.async_delete_issue(hass, DOMAIN, f"{key}_{entry.entry_id}")
     if entry.data.get(CONF_ADDRESS):
         ir.async_delete_issue(hass, DOMAIN, f"flash_failed_{entry.data[CONF_ADDRESS]}")
     if entry.data.get(CONF_PIN_BONDED) and entry.data.get(CONF_BONDED_SCANNER) and entry.data.get(CONF_ADDRESS):
-        from .pairing import async_forget_bond
-
         await async_forget_bond(hass, entry.data[CONF_ADDRESS], entry.data[CONF_BONDED_SCANNER])
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: PvvxConfigEntry) -> bool:
     """Unload."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

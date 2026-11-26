@@ -2,7 +2,7 @@
 
 import pytest
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.pvvx_ota import get_shared
@@ -11,6 +11,7 @@ from custom_components.pvvx_ota.const import DOMAIN
 from .fake_gatt import FakeClient
 from .test_config import SAMPLE, setup_cfg_entry
 from .test_ha import bthome_device
+from .translated import raises_key
 
 HW0 = SAMPLE[:11] + bytes([0, 0])  # hardware id 0 is in the test catalog
 
@@ -35,7 +36,7 @@ async def test_low_battery_refuses_the_flash(hass: HomeAssistant, enable_bluetoo
     entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0)
     try:
         before = list(client.writes)
-        with pytest.raises(HomeAssistantError, match=r"battery 2\.31 V is below 2\.50 V.*force: true"):
+        with raises_key("battery_low", ServiceValidationError, volts="2.31", limit="2.50"):
             await flash(hass)
         assert client.writes == before  # nothing went over
         assert get_shared(hass).flashing is False
@@ -84,7 +85,7 @@ async def test_millivolt_sensor_below_threshold_refuses(hass: HomeAssistant, ena
     add_voltage(hass, "2400", "mV")
     entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=HW0), hw=0)
     try:
-        with pytest.raises(HomeAssistantError, match=r"2\.40 V"):
+        with raises_key("battery_low", ServiceValidationError, volts="2.40"):
             await flash(hass)
     finally:
         [c.stop() for c in ctx]

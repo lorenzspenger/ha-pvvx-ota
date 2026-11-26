@@ -6,6 +6,7 @@ import asyncio
 import re
 import time
 from dataclasses import dataclass, replace
+from typing import Any
 
 import aiohttp
 
@@ -61,7 +62,7 @@ class Catalog:
         return board
 
 
-def parse_catalog(data: dict) -> Catalog:
+def parse_catalog(data: dict[str, Any]) -> Catalog:
     """Parse the decoded firmware.json."""
     try:
         return Catalog(
@@ -172,7 +173,7 @@ class FirmwareSource:
         self._history_failures = 0
         self._history_lock = asyncio.Lock()
 
-    def summary(self) -> dict:
+    def summary(self) -> dict[str, Any]:
         """What is known about the catalog right now (diagnostics); no network access."""
         c = self._catalog
         return {

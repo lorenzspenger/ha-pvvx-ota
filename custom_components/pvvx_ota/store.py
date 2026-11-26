@@ -7,10 +7,12 @@ import logging
 import re
 import secrets
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
+from bleak_retry_connector import BleakClientWithServiceCache
+from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant, callback
@@ -22,7 +24,6 @@ from homeassistant.util import dt as dt_util
 from . import calib as calibmod
 from . import clock as clockmod
 from . import config as cfgmod
-from . import get_shared
 from .const import (
     CONF_AUTO_CLOCK_SYNC,
     CONF_AUTO_RESTORE_ENCRYPTION,
@@ -36,7 +37,9 @@ from .const import (
     FIRST_READ_RETRY,
 )
 from .device import async_connected
+from .errors import ha_error, validation_error
 from .ota import OtaError, PairingRequiredError, parse_cfg, read_cfg_raw, send_command, write_cfg
+from .shared import get_shared
 
 _LOGGER = logging.getLogger(__name__)
 REBOOT_REPLY_TIMEOUT = 5.0
@@ -59,7 +62,7 @@ class ConfigStore:
         self.raw: bytes | None = None
         self._listeners: list[Callable[[], None]] = []
         self._pending: dict[str, int] = {}
-        self._flush: asyncio.Task | None = None
+        self._flush: asyncio.Task[None] | None = None
         self._unreachable = False  # a read failed and none worked since: logged once, and once more when it is back
         self._writing = False  # the running flush has taken its batch and is on the wire: new changes need the next one
         self.flash_latest: Callable[[], Awaitable[None]] | None = (
@@ -69,7 +72,7 @@ class ConfigStore:
         self.calib: calibmod.Coef | None = None  # sensor coefficients (command 0x25), None if not readable here
         self.last_flash: dict[str, Any] | None = None  # timings/result of the last flash (diagnostics)
         self.quiet_until = 0.0  # event-loop time until which nothing else should connect (sensor is rebooting)
-        self.first_read: asyncio.Task | None = None  # the background first read of this setup (tests await it)
+        self.first_read: asyncio.Task[None] | None = None  # the background first read of this setup (tests await it)
 
     # -- state ---------------------------------------------------------
     @property
@@ -213,7 +216,7 @@ class ConfigStore:
             try:
                 await self._sync_clock(client, force=True)
             except clockmod.ClockError as err:
-                raise HomeAssistantError(f"{self.name}: {err}") from err
+                raise ha_error("sensor_error", name=self.name, error=err) from err
         self.set_raw(raw)
 
     def needs_read(self) -> bool:
@@ -282,7 +285,7 @@ class ConfigStore:
         """Read the block now (button)."""
         shared = get_shared(self.hass)
         if shared.flashing:
-            raise HomeAssistantError("A firmware flash is running")
+            raise ha_error("flash_running")
         try:
             async with shared.lock, async_connected(self.hass, self.address, self.name) as client:
                 raw = await read_cfg_raw(client)
@@ -290,10 +293,10 @@ class ConfigStore:
                 await self._auto_clock(client, raw)
         except PairingRequiredError as err:
             self.pairing_lost(err)
-            raise HomeAssistantError(f"{self.name}: {err}") from err
+            raise ha_error("sensor_error", name=self.name, error=err) from err
         except OtaError as err:
             self.mark_unreachable(err)
-            raise HomeAssistantError(f"{self.name}: {err}") from err
+            raise ha_error("sensor_error", name=self.name, error=err) from err
         except HomeAssistantError as err:  # not connectable
             self.mark_unreachable(err)
             raise
@@ -305,7 +308,7 @@ class ConfigStore:
 
         Returns once the batch was written and read back, raising HomeAssistantError if it failed."""
         if get_shared(self.hass).flashing:
-            raise HomeAssistantError("A firmware flash is running; settings cannot be changed now")
+            raise ha_error("flash_running")
         self._pending.update(changes)
         self.async_notify()
         if self._writing and self._flush is not None:
@@ -334,7 +337,7 @@ class ConfigStore:
         shared = get_shared(self.hass)
         async with shared.lock:
             if shared.flashing:
-                raise HomeAssistantError("A firmware flash is running; settings were not changed")
+                raise ha_error("flash_running")
             try:
                 async with async_connected(self.hass, self.address, self.name) as client:
                     # always start from a fresh read: the sensor may have been changed elsewhere meanwhile
@@ -346,7 +349,7 @@ class ConfigStore:
                     _LOGGER.debug("%s: writing %s -> %s", self.name, raw[2:].hex(), payload.hex())
                     echoed = await write_cfg(client, payload)
             except (OtaError, cfgmod.ConfigError) as err:
-                raise HomeAssistantError(f"{self.name}: {err}") from err
+                raise ha_error("sensor_error", name=self.name, error=err) from err
         self.set_raw(echoed)
         if "adv_type" in changes:
             if cfgmod.get(echoed, "adv_type") == 3:
@@ -356,7 +359,7 @@ class ConfigStore:
         stored = {k: cfgmod.get(echoed, k) for k in changes}
         if stored != changes:
             # test_config() in the firmware clamps some values
-            raise HomeAssistantError(f"{self.name}: the sensor stored {stored} instead of the requested {changes}")
+            raise ha_error("value_mismatch", name=self.name, stored=stored, requested=changes)
         if echoed[2:] != payload:
             _LOGGER.warning("%s: sensor reports %s after writing %s", self.name, echoed[2:].hex(), payload.hex())
 
@@ -364,7 +367,7 @@ class ConfigStore:
         """Write the pre-flash settings back (button; only the fields exposed here)."""
         snap = self.snapshot
         if not snap or not self.can_restore:
-            raise HomeAssistantError("No saved settings to restore")
+            raise ha_error("nothing_to_restore")
         changes = {k: v for k, v in self._restorable(snap).items() if self.value(k) != v}
         if changes:
             await self.async_request(changes)
@@ -409,10 +412,10 @@ class ConfigStore:
                     # read-only check that the sensor still holds a key (a missing one answers 0xff, the key is not kept)
                     reply = await send_command(client, b"\x18", 0x18, log=False)
                     if len(reply) < 17 or set(reply[1:17]) <= {0, 0xFF}:
-                        raise HomeAssistantError("the sensor holds no encryption key any more")
+                        raise ha_error("encryption_key_gone")
                     echoed = await write_cfg(client, payload)
             if cfgmod.get(echoed, "adv_crypto") != 1:
-                raise HomeAssistantError("the sensor did not switch encryption on")
+                raise ha_error("encryption_not_switched_on", name=self.name)
         except (HomeAssistantError, OtaError, cfgmod.ConfigError) as err:
             _LOGGER.warning("%s: could not switch encryption back on after the flash: %s", self.name, err)
             self._issue("encryption_restore_failed")
@@ -460,25 +463,25 @@ class ConfigStore:
         ir.async_delete_issue(self.hass, DOMAIN, f"{key}_{self.entry.entry_id}")
 
     @asynccontextmanager
-    async def _session(self):
+    async def _session(self) -> AsyncIterator[BleakClientWithServiceCache]:
         """Same rules as every write: not while flashing, one operation at a time, translated errors."""
         shared = get_shared(self.hass)
         if shared.flashing:
-            raise HomeAssistantError("A firmware flash is running; nothing was changed")
+            raise ha_error("flash_running")
         async with shared.lock:
             if shared.flashing:
-                raise HomeAssistantError("A firmware flash is running; nothing was changed")
+                raise ha_error("flash_running")
             try:
                 async with async_connected(self.hass, self.address, self.name) as client:
                     yield client
             except (OtaError, cfgmod.ConfigError) as err:
-                raise HomeAssistantError(f"{self.name}: {err}") from err
+                raise ha_error("sensor_error", name=self.name, error=err) from err
 
     async def async_set_encryption(self, enable: bool, key: str | None = None) -> dict[str, Any]:
         """Switch encrypted adverts on/off. The key goes out only in the returned dict: never log it,
         never put it in state or attributes. The BTHome config entry is not touched."""
         if key is not None and not re.fullmatch(r"[0-9a-fA-F]{32}", key):
-            raise HomeAssistantError("The key must be 32 hex characters (16 bytes)")
+            raise validation_error("bad_key")
         async with self._session() as client:
             raw = await read_cfg_raw(client)
             hw = parse_cfg(raw)[1]
@@ -489,15 +492,10 @@ class ConfigStore:
                 bindkey = bytes.fromhex(key) if key else secrets.token_bytes(16)
                 reply = await send_command(client, b"\x18" + bindkey, 0x18, log=False)
                 if reply[1:17] != bindkey:
-                    raise HomeAssistantError(
-                        f"{self.name}: the sensor did not accept the key (this board may not support encrypted adverts)"
-                    )
+                    raise ha_error("key_not_accepted", name=self.name)
             echoed = await write_cfg(client, payload) if payload != raw[2:] else raw
         if cfgmod.get(echoed, "adv_crypto") != int(enable):
-            raise HomeAssistantError(
-                f"{self.name}: the sensor did not switch encryption {'on' if enable else 'off'}"
-                + (" (the new key was stored; run the action again)" if enable else "")
-            )
+            raise ha_error("encryption_not_switched_on" if enable else "encryption_not_switched_off", name=self.name)
         self.set_raw(echoed)
         self._issue("encryption_changed")
         result: dict[str, Any] = {"encryption": enable}
@@ -513,13 +511,13 @@ class ConfigStore:
     async def async_set_pin(self, pin: int) -> dict[str, Any]:
         """Set (1..999999) or clear (0) the PIN. Write only: it is never read back, logged or stored."""
         if not 0 <= pin <= 999999:
-            raise HomeAssistantError("The PIN must be 0 (off) or up to 6 digits")
+            raise validation_error("bad_pin")
         async with self._session() as client:
             raw = await read_cfg_raw(client)
             cfgmod.require_verified(raw)
             reply = await send_command(client, b"\x70" + pin.to_bytes(4, "little"), 0x70, log=False)
         if len(reply) < 2 or reply[1] == 3:
-            raise HomeAssistantError(f"{self.name}: the sensor could not store the PIN")
+            raise ha_error("pin_not_stored", name=self.name)
         if pin:
             self._issue("pin_set")
         else:
@@ -548,9 +546,7 @@ class ConfigStore:
             try:
                 await send_command(client, b"\x72", 0x72, timeout=REBOOT_REPLY_TIMEOUT)
             except OtaError as err:
-                raise HomeAssistantError(
-                    f"{self.name}: the sensor did not confirm the reboot command ({err}); older firmware may not have it"
-                ) from err
+                raise ha_error("reboot_not_confirmed", name=self.name, error=err) from err
         # leaving the session drops the link, which is what makes the sensor reboot
         self.quiet_until = asyncio.get_running_loop().time() + REBOOT_QUIET
         _LOGGER.info("%s: reboot requested, the sensor restarts when the link drops", self.name)
@@ -558,8 +554,6 @@ class ConfigStore:
 
     async def _watch_return(self) -> None:
         """Log whether the sensor advertises again within REBOOT_WATCH seconds (information only)."""
-        from homeassistant.components import bluetooth
-
         start = time.monotonic()
         end = start + REBOOT_WATCH
         while time.monotonic() < end:
@@ -583,19 +577,13 @@ class ConfigStore:
                 request = calibmod.build_write(current, temp_offset, humi_offset)
                 new = calibmod.parse(await send_command(client, request, 0x25, timeout=CALIB_TIMEOUT))
             except calibmod.CalibError as err:
-                raise HomeAssistantError(f"{self.name}: {err}") from err
+                raise ha_error("sensor_error", name=self.name, error=err) from err
         self.calib = new
         self.async_notify()
         expected = {"tk": current.tk, "hk": current.hk}
         if temp_offset is not None and new.temp_offset != round(temp_offset, 2):
-            raise HomeAssistantError(
-                f"{self.name}: the sensor stored a temperature offset of {new.temp_offset} instead of {temp_offset}"
-            )
+            raise ha_error("temperature_offset_mismatch", name=self.name, stored=new.temp_offset, requested=temp_offset)
         if humi_offset is not None and new.humi_offset != round(humi_offset, 2):
-            raise HomeAssistantError(
-                f"{self.name}: the sensor stored a humidity offset of {new.humi_offset} instead of {humi_offset}"
-            )
+            raise ha_error("humidity_offset_mismatch", name=self.name, stored=new.humi_offset, requested=humi_offset)
         if (new.tk, new.hk) != (expected["tk"], expected["hk"]):
-            raise HomeAssistantError(
-                f"{self.name}: the sensor changed its slope factors; check them with TelinkMiFlasher"
-            )
+            raise ha_error("slope_changed", name=self.name)

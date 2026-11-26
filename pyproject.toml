@@ -20,10 +20,5 @@ markers = [
 [tool.mypy]
 python_version = "3.14"
 files = ["custom_components"]
-ignore_missing_imports = true
-warn_unused_ignores = false
-
-[[tool.mypy.overrides]]
-# HA's typed schema classes (probatio) lag behind the voluptuous objects that cv/vol still hand out.
-module = ["pvvx_ota.update", "pvvx_ota.config_flow", "custom_components.pvvx_ota.update", "custom_components.pvvx_ota.config_flow"]
-disable_error_code = ["dict-item", "arg-type"]
+strict = true
+warn_unused_ignores = true

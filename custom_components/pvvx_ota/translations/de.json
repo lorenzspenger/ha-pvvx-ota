@@ -113,6 +113,104 @@
       }
     }
   },
+  "exceptions": {
+    "update_entity_not_ready": {
+      "message": "Die Firmware-Update-Entität ist noch nicht bereit."
+    },
+    "paired_proxy_does_not_see_sensor": {
+      "message": "{name} ist über den gekoppelten Proxy ({proxy}) nicht erreichbar: Er sieht den Sensor gerade nicht. Ein Sensor mit PIN antwortet nur über den Proxy, der seine Kopplung hält, deshalb wurde keine Verbindung aufgebaut. Versuche es später erneut oder stelle diesen Proxy näher an den Sensor."
+    },
+    "connected_via_wrong_proxy": {
+      "message": "{name} ist über den gekoppelten Proxy ({proxy}) nicht erreichbar: Die Verbindung lief über {link}. Ein Sensor mit PIN antwortet nur über den Proxy, der seine Kopplung hält, deshalb wurde nichts gesendet. Versuche es später erneut oder stelle diesen Proxy näher an den Sensor."
+    },
+    "proxy_not_verifiable": {
+      "message": "{name}: Diese Home-Assistant-Version sagt nicht, über welchen Proxy die Verbindung läuft, daher lässt sie sich nicht mit dem gekoppelten Proxy ({proxy}) abgleichen. Es wurde nichts an den Sensor gesendet."
+    },
+    "not_connectable": {
+      "message": "{name} ({address}) ist gerade nicht verbindbar: {reason}. pvvx-Sensoren sind nur zeitweise verbindbar; versuche es in einer Minute erneut."
+    },
+    "connect_timeout": {
+      "message": "Verbindung zu {name} ({address}) nicht innerhalb von {seconds} s möglich: {reason}. Das ist kein PIN-Problem: Der Sensor hat keine Verbindung angenommen. Ein schwaches Signal oder ein ausgelasteter Proxy kann die Ursache sein; versuche es erneut oder stelle einen Proxy näher an den Sensor."
+    },
+    "connect_failed": {
+      "message": "Verbindung zu {name} ({address}) nicht möglich: {error}"
+    },
+    "pair_call_failed": {
+      "message": "Die Koppel-Aktion von {proxy} konnte nicht aufgerufen werden: {error}"
+    },
+    "pair_connect_failed": {
+      "message": "{proxy} konnte sich zum Koppeln nicht mit {address} verbinden. pvvx-Sensoren sind nur zeitweise verbindbar; versuche es erneut."
+    },
+    "sensor_error": {
+      "message": "{name}: {error}"
+    },
+    "unrecognised_reply": {
+      "message": "{name}: Die Antwort auf die Versionsabfrage wurde nicht erkannt. Ist das die pvvx-Firmware?"
+    },
+    "path_not_allowed": {
+      "message": "{path} liegt nicht in einem erlaubten Verzeichnis. Füge den Ordner in der Home-Assistant-Konfiguration unter allowlist_external_dirs hinzu."
+    },
+    "file_unreadable": {
+      "message": "{path} kann nicht gelesen werden: {error}"
+    },
+    "battery_low": {
+      "message": "{name}: Die Batterie hat {volts} V und liegt unter dem Grenzwert von {limit} V. Wechsle zuerst die Batterie oder rufe die Aktion mit force: true erneut auf."
+    },
+    "queue_timeout": {
+      "message": "{name}: Länger als {hours} h auf die vorherigen Firmware-Vorgänge gewartet."
+    },
+    "flash_failed": {
+      "message": "Flashen von {name} fehlgeschlagen: {error}"
+    },
+    "pin_needs_confirmation": {
+      "message": "Abgelehnt: Mit gesetzter PIN können sich Home Assistant und seine Proxys nicht mehr mit dem Sensor verbinden, solange kein Proxy eine Kopplung für ihn hält; nur TelinkMiFlasher kann die PIN entfernen. Rufe die Aktion mit confirm: true erneut auf, wenn du das wirklich willst."
+    },
+    "flash_running": {
+      "message": "Ein Firmware-Flash läuft. Versuche es erneut, wenn er beendet ist."
+    },
+    "value_mismatch": {
+      "message": "{name}: Der Sensor hat {stored} gespeichert statt des gewünschten Werts {requested}."
+    },
+    "nothing_to_restore": {
+      "message": "Es gibt keine gespeicherten Einstellungen zum Wiederherstellen."
+    },
+    "encryption_key_gone": {
+      "message": "Der Sensor enthält keinen Verschlüsselungsschlüssel mehr."
+    },
+    "encryption_not_switched_on": {
+      "message": "{name}: Der Sensor hat die Verschlüsselung nicht eingeschaltet. Der neue Schlüssel wurde gespeichert; führe die Aktion erneut aus."
+    },
+    "encryption_not_switched_off": {
+      "message": "{name}: Der Sensor hat die Verschlüsselung nicht ausgeschaltet."
+    },
+    "bad_key": {
+      "message": "Der Schlüssel muss aus 32 Hexadezimalzeichen (16 Bytes) bestehen."
+    },
+    "key_not_accepted": {
+      "message": "{name}: Der Sensor hat den Schlüssel nicht angenommen. Dieses Board unterstützt vielleicht keine verschlüsselten Advertisements."
+    },
+    "bad_pin": {
+      "message": "Die PIN muss 0 (schaltet sie aus) oder höchstens 6 Ziffern sein."
+    },
+    "pin_not_stored": {
+      "message": "{name}: Der Sensor konnte die PIN nicht speichern."
+    },
+    "reboot_not_confirmed": {
+      "message": "{name}: Der Sensor hat den Neustart-Befehl nicht bestätigt ({error}). Ältere Firmware kennt ihn möglicherweise nicht."
+    },
+    "temperature_offset_mismatch": {
+      "message": "{name}: Der Sensor hat einen Temperatur-Offset von {stored} gespeichert statt {requested}."
+    },
+    "humidity_offset_mismatch": {
+      "message": "{name}: Der Sensor hat einen Feuchte-Offset von {stored} gespeichert statt {requested}."
+    },
+    "slope_changed": {
+      "message": "{name}: Der Sensor hat seine Steigungsfaktoren geändert. Prüfe sie mit TelinkMiFlasher."
+    },
+    "sensor_not_heard": {
+      "message": "{name} ({address}) wurde noch von keinem verbindbaren Bluetooth-Scanner gehört."
+    }
+  },
   "issues": {
     "adv_type_changed": {
       "title": "{name}: Advertising-Typ ist nicht BTHome",

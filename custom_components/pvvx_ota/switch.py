@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import CONF_BETA
 from .entity import PvvxConfigEntity, get_store, wanted
+from .shared import PvvxConfigEntry
 
 # key -> (name, enabled by default). The PHY switches are opt-in: coded-PHY/BT5 adverts may not reach ESP32 proxies,
 # the sensor can vanish from HA until it is power cycled (long range resets on power-off).
@@ -36,7 +38,7 @@ WARNINGS = {
 }
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, add: AddConfigEntryEntitiesCallback) -> None:
+async def async_setup_entry(hass: HomeAssistant, entry: PvvxConfigEntry, add: AddConfigEntryEntitiesCallback) -> None:
     store = get_store(hass, entry)
     add([BetaSwitch(hass, entry)])  # a local option: always there
     add(
@@ -51,7 +53,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, add: AddCon
 class FlagSwitch(PvvxConfigEntity, SwitchEntity):
     field_key: str
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, key: str, name: str, enabled_default: bool) -> None:
+    def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry, key: str, name: str, enabled_default: bool) -> None:
         self.field_key = FIELD_OF.get(key, key)
         self.inverted = key in INVERTED
         self.warning = WARNINGS.get(key)
@@ -62,10 +64,10 @@ class FlagSwitch(PvvxConfigEntity, SwitchEntity):
         v = self.store.value(self.field_key)
         return None if v is None else bool(v) != self.inverted
 
-    async def async_turn_on(self, **kwargs) -> None:
+    async def async_turn_on(self, **kwargs: Any) -> None:
         await self.store.async_request({self.field_key: 0 if self.inverted else 1})
 
-    async def async_turn_off(self, **kwargs) -> None:
+    async def async_turn_off(self, **kwargs: Any) -> None:
         await self.store.async_request({self.field_key: 1 if self.inverted else 0})
 
 
@@ -74,7 +76,7 @@ class BetaSwitch(PvvxConfigEntity, SwitchEntity):
 
     Kept in the config entry options. Off by default; a beta is never offered as a downgrade."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
         self._entry = entry
         super().__init__(hass, entry, "beta_firmware", "Beta firmware", enabled_default=False)
 
@@ -90,8 +92,8 @@ class BetaSwitch(PvvxConfigEntity, SwitchEntity):
         self.hass.config_entries.async_update_entry(self._entry, options={**self._entry.options, CONF_BETA: on})
         self.async_write_ha_state()
 
-    async def async_turn_on(self, **kwargs) -> None:
+    async def async_turn_on(self, **kwargs: Any) -> None:
         await self._set(True)
 
-    async def async_turn_off(self, **kwargs) -> None:
+    async def async_turn_off(self, **kwargs: Any) -> None:
         await self._set(False)

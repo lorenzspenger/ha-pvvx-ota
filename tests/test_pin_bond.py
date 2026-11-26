@@ -14,6 +14,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.pvvx_ota import bt_internals as bt
 from custom_components.pvvx_ota import device as dev
 from custom_components.pvvx_ota.const import (
     CONF_BONDED_SCANNER,
@@ -28,6 +29,7 @@ from custom_components.pvvx_ota.ota import PairingRequiredError
 from .fake_gatt import FakeClient
 from .test_config import MAC, SAMPLE, patch_catalog
 from .test_ha import FLOW_CONN, svc
+from .translated import raises_key
 
 PROXY = "AA:BB:CC:00:00:01"
 OTHER = "AA:BB:CC:DD:EE:FF"
@@ -118,7 +120,7 @@ async def test_paired_proxy_not_seeing_the_sensor_fails_before_connecting(hass, 
     connects.devices[:] = [path(OTHER, -50)]
     client = Linked(needs_pairing=True)
     connects.append(client)
-    with pytest.raises(HomeAssistantError, match="does not see the sensor right now"):
+    with raises_key("paired_proxy_does_not_see_sensor"):
         async with dev.async_connected(hass, MAC, "ATC", encrypt=True, bonded_scanner=PROXY):
             pytest.fail("must not get a client")
     assert connects.calls == [] and client.pair_calls == 0 and len(connects) == 1  # nothing was connected
@@ -129,7 +131,7 @@ async def test_scanner_data_that_fails_counts_as_not_seen(hass, connects, monkey
         raise RuntimeError("no stack")
 
     monkeypatch.setattr(dev.bluetooth, "async_scanner_devices_by_address", boom)
-    with pytest.raises(HomeAssistantError, match="does not see the sensor"):
+    with raises_key("paired_proxy_does_not_see_sensor"):
         async with dev.async_connected(hass, MAC, "ATC", encrypt=True, bonded_scanner=PROXY):
             pass
 
@@ -138,7 +140,7 @@ async def test_connection_through_another_proxy_is_still_refused_without_sending
     """Safety net: if habluetooth still routed it elsewhere, nothing is sent."""
     client = Linked(source=OTHER, needs_pairing=True)
     connects.append(client)
-    with pytest.raises(HomeAssistantError, match="not reachable via the paired proxy"):
+    with raises_key("connected_via_wrong_proxy", proxy=PROXY):
         async with dev.async_connected(hass, MAC, "ATC", encrypt=True, bonded_scanner=PROXY):
             pytest.fail("must not get a client")
     assert client.pair_calls == 0 and client.disconnected
@@ -155,7 +157,7 @@ async def test_pinned_client_class_only_uses_the_paired_scanner(monkeypatch):
         def _async_get_backend_for_ble_device(self, manager, scanner, ble_device):
             return None if ble_device.source == "full" else ("backend", ble_device.source)
 
-    monkeypatch.setattr(dev, "BleakClientWithServiceCache", Parent)
+    monkeypatch.setattr(bt, "BleakClientWithServiceCache", Parent)
     manager = SimpleNamespace(
         async_scanner_devices_by_address=lambda address, connectable: [
             path(OTHER, -40),
@@ -163,15 +165,15 @@ async def test_pinned_client_class_only_uses_the_paired_scanner(monkeypatch):
             path(PROXY, -70),
         ]
     )
-    cls = dev.pinned_client_class(PROXY, MAC)
+    cls = bt.pinned_client_class(PROXY, MAC)
     assert cls is not Parent
     assert cls()._async_get_best_available_backend_and_device(manager) == ("backend", PROXY)
     none = SimpleNamespace(async_scanner_devices_by_address=lambda address, connectable: [path(OTHER, -40)])
-    with pytest.raises(dev.BleakError, match="paired proxy"):
+    with pytest.raises(bt.BleakError, match="paired proxy"):
         cls()._async_get_best_available_backend_and_device(none)
     full = SimpleNamespace(async_scanner_devices_by_address=lambda address, connectable: [path("full", -40)])
-    cls2 = dev.pinned_client_class("full", MAC)
-    with pytest.raises(dev.BleakError):
+    cls2 = bt.pinned_client_class("full", MAC)
+    with pytest.raises(bt.BleakError):
         cls2()._async_get_best_available_backend_and_device(full)
 
 
@@ -179,8 +181,9 @@ async def test_pinned_client_class_falls_back_when_habluetooth_has_no_such_metho
     class Plain:
         pass
 
-    monkeypatch.setattr(dev, "BleakClientWithServiceCache", Plain)
-    assert dev.pinned_client_class(PROXY, MAC) is Plain
+    monkeypatch.setattr(bt, "BleakClientWithServiceCache", Plain)
+    monkeypatch.setattr(bt, "_warned", False)
+    assert bt.pinned_client_class(PROXY, MAC) is None  # the caller connects normally
 
 
 async def test_sensor_without_a_bond_is_untouched(hass, connects):
@@ -413,3 +416,36 @@ def test_expected_path_is_the_paired_proxy_for_a_pin_sensor_else_the_strongest(h
     assert dev.expected_path(hass, MAC) is None  # the paired proxy does not hear it
     monkeypatch.setattr(dev.bluetooth, "async_scanner_devices_by_address", lambda *a, **k: 1 / 0)
     assert dev.expected_path(hass, MAC) is None
+
+
+async def test_missing_hook_is_logged_once_and_the_connection_is_checked_afterwards(monkeypatch, caplog):
+    class Plain:
+        pass
+
+    monkeypatch.setattr(bt, "BleakClientWithServiceCache", Plain)
+    monkeypatch.setattr(bt, "_warned", False)
+    caplog.set_level("WARNING")
+    for _ in range(3):
+        assert bt.pinned_client_class(PROXY, MAC) is None
+    assert [r.message for r in caplog.records].count(caplog.records[0].message) == 1 and len(caplog.records) == 1
+    assert "no longer has the Bluetooth hook" in caplog.text
+
+
+async def test_pinned_sensor_is_refused_when_the_connection_path_cannot_be_verified(hass, connects, monkeypatch):
+    """No hook to pin the proxy and no way to see which one served the link: nothing is sent to a PIN sensor."""
+    monkeypatch.setattr(bt, "pinned_client_class", lambda source, address: None)
+    client = FakeClient()  # no _connected_scanner at all
+    connects.append(client)
+    with raises_key("proxy_not_verifiable"):
+        async with dev.async_connected(hass, MAC, "ATC", encrypt=True, bonded_scanner=PROXY):
+            pytest.fail("must not get a client")
+    assert client.pair_calls == 0 and client.writes == [] and client.disconnected
+    assert dev.connected_source(client) is None and bt.connected_scanner(client) is None
+
+
+async def test_unpinned_connection_still_works_for_a_sensor_without_a_bond(hass, connects, monkeypatch):
+    monkeypatch.setattr(bt, "pinned_client_class", lambda source, address: None)
+    client = FakeClient()
+    connects.append(client)
+    async with dev.async_connected(hass, MAC, "ATC") as c:
+        assert c is client

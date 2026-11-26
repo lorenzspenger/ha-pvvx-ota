@@ -61,13 +61,13 @@ def test_garbled_reply_refused(bad):
 
 # -- entities -----------------------------------------------------------------------------------
 from homeassistant.core import HomeAssistant  # noqa: E402
-from homeassistant.exceptions import HomeAssistantError  # noqa: E402
 from homeassistant.helpers import entity_registry as er  # noqa: E402
 
 from custom_components.pvvx_ota.const import DOMAIN  # noqa: E402
 
 from .fake_gatt import FakeClient  # noqa: E402
 from .test_config import SAMPLE, ent, setup_cfg_entry  # noqa: E402
+from .translated import raises_key  # noqa: E402
 
 
 async def enable(hass, eid):
@@ -153,7 +153,7 @@ async def test_failed_verification_is_reported(hass: HomeAssistant, enable_bluet
             return await orig(char, data, response)
 
         client.write_gatt_char = clamp
-        with pytest.raises(HomeAssistantError, match="stored a temperature offset"):
+        with raises_key("temperature_offset_mismatch"):
             await store.async_set_calibration(temp_offset=2.0)
     finally:
         [c.stop() for c in ctx]

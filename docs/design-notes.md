@@ -42,4 +42,7 @@ uv venv --python 3.14 .venv && uv pip install --python .venv/bin/python -r requi
 ```
 Protocol code lives in `custom_components/pvvx_ota/ota.py` (no HA imports), ported from pvvx's `utils/ble_ota.py`.
 
+## Private Bluetooth internals
+Home Assistant has no supported way to say "connect through this proxy" or to ask which proxy a connection runs through, and a PIN sensor only answers through the proxy that holds its bond. All private access is in one module, [`bt_internals.py`](../custom_components/pvvx_ota/bt_internals.py): a client subclass that replaces habluetooth's `_async_get_best_available_backend_and_device` with "the paths of the paired scanner only", and a read of the connection's `_connected_scanner`. If a Home Assistant release removes either, the integration logs one warning and connects the normal way; a connection to a PIN-bonded sensor whose proxy cannot be verified is refused before anything is sent. `tests/test_pin_bond.py` simulates both attributes missing.
+
 Some PIN sensors may still refuse the first protected write after a correct pairing; see the [known issue](pin-sensors.md#known-issue-the-sensor-refuses-after-a-correct-pairing).

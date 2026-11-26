@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.23.0-beta.5
+
+Git tag `v0.23.0-beta.5`, manifest version `0.23.0b5`.
+
+- **Translated error messages**: every error the integration raises is now a translation key with placeholders (English and German), so messages follow the user's language; a test checks that keys, texts and placeholders match.
+- **Input errors are `ServiceValidationError`**: a bad key or PIN, a file path that is not allowed or cannot be read, a low battery without `force` and a missing `confirm` are reported as invalid input, not as failures.
+- **Shared state in its own module** (`shared.py`): the import cycles and the function-local imports are gone; behaviour is unchanged.
+- **One helper attaches the entities to the BTHome device** (`registry.attach_to_device`) instead of two copies of the same code.
+- **Strict typing**: mypy strict passes on the whole package without per-module overrides or ignored imports; `quality_scale.yaml` now lists `strict-typing`, `exception-translations` and `action-exceptions` as done.
+- **Reproducible CI**: Home Assistant, `pytest-homeassistant-custom-component`, mypy and ruff are pinned (the mypy job installs the same requirements as the tests).
+- **Private Bluetooth access isolated** in `bt_internals.py`: if a Home Assistant release removes the hook for connecting through one proxy, one warning is logged and the normal connection is used; a PIN-bonded sensor whose proxy cannot be verified is refused before anything is sent (new message). Documented in `docs/design-notes.md`.
+
 ## 0.23.0-beta.4
 
 Git tag `v0.23.0-beta.4`, manifest version `0.23.0b4`.

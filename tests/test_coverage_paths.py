@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.pvvx_ota import device as dev
@@ -16,6 +15,7 @@ from custom_components.pvvx_ota.firmware import Catalog, FirmwareError, Firmware
 
 from .fake_gatt import FakeClient
 from .test_config import MAC, SAMPLE, ent, fast_batch, setup_cfg_entry  # noqa: F401
+from .translated import raises_key
 
 # -- device ----------------------------------------------------------------------------------------
 
@@ -31,7 +31,7 @@ async def test_connect_without_a_connectable_device_is_a_clear_error(hass: HomeA
     with (
         patch.object(dev.bluetooth, "async_ble_device_from_address", return_value=None),
         patch.object(dev, "_why_unreachable", return_value="never heard"),
-        pytest.raises(HomeAssistantError, match="not connectable right now: never heard"),
+        raises_key("not_connectable", reason="never heard"),
     ):
         async with dev.async_connected(hass, MAC, "ATC"):
             pass
@@ -48,7 +48,7 @@ async def test_connect_failure_and_the_device_refresh_callback(hass: HomeAssista
     with (
         patch.object(dev.bluetooth, "async_ble_device_from_address", side_effect=[first, later]),
         patch.object(dev, "establish_connection", failing),
-        pytest.raises(HomeAssistantError, match="Could not connect to ATC .*proxy busy"),
+        raises_key("connect_failed", error="proxy busy"),
     ):
         async with dev.async_connected(hass, MAC, "ATC"):
             pass
@@ -222,7 +222,7 @@ async def test_reflash_button_needs_the_update_entity(hass: HomeAssistant, enabl
     try:
         button = ReflashButton(hass, entry)
         entry.runtime_data.flash_latest = None
-        with pytest.raises(HomeAssistantError, match="not ready"):
+        with raises_key("update_entity_not_ready"):
             await button.async_press()
         flash = AsyncMock()
         entry.runtime_data.flash_latest = flash

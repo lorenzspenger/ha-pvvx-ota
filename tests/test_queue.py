@@ -4,10 +4,8 @@ import asyncio
 from contextlib import asynccontextmanager
 from unittest.mock import patch
 
-import pytest
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pvvx_ota import get_shared
@@ -16,6 +14,7 @@ from custom_components.pvvx_ota.ota import OTA_CHAR
 
 from .fake_gatt import FakeClient
 from .test_ha import patch_catalog
+from .translated import raises_key
 
 MAC_A, MAC_B = "A4:C1:38:00:00:0A", "A4:C1:38:00:00:0B"
 # 5.8 installed, hardware id 0 (in the test catalog): an update to 5.9 is available
@@ -177,7 +176,7 @@ async def test_queued_job_gives_up_after_the_cap(hass: HomeAssistant, enable_blu
             if "A:started" in log:
                 break
         with patch("custom_components.pvvx_ota.update.QUEUE_TIMEOUT", 0.1):
-            with pytest.raises(HomeAssistantError, match="waited more than"):
+            with raises_key("queue_timeout"):
                 await hass.services.async_call("update", "install", {"entity_id": "update.sensor_b"}, blocking=True)
         assert get_shared(hass).waiting == []
         assert hass.states.get("update.sensor_b").attributes["in_progress"] is False

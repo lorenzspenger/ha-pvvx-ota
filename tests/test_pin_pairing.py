@@ -31,6 +31,7 @@ from custom_components.pvvx_ota.ota import PairingRequiredError
 from .test_config import MAC, SAMPLE, patch_catalog
 from .test_ha import FLOW_CONN, fast_read_cfg, svc
 from .test_pin_bond import PROXY, Linked, connects, probe  # noqa: F401
+from .translated import raises_key
 
 SECRET_PIN = 424242
 
@@ -355,7 +356,7 @@ async def test_dead_bond_without_a_pin_starts_reauth_but_unreachable_does_not(
     monkeypatch.setattr(type(entry), "async_start_reauth", lambda self, hass_, *a, **k: started.append(self.entry_id))
     # unreachable: the paired proxy does not hear the sensor, no connection, no reauth
     connects.devices.clear()
-    with pytest.raises(HomeAssistantError, match="does not see the sensor"):
+    with raises_key("paired_proxy_does_not_see_sensor"):
         async with dev.async_connected(hass, MAC, "ATC"):
             pass
     assert started == []
@@ -474,7 +475,7 @@ async def test_pairer_that_never_reached_the_sensor_is_retried_then_reported(has
     hass.states.async_set(busy, "off")
     calls = offer(hass, "proxy_1")
     hass.states.async_set(result, "no connection")
-    with pytest.raises(pairing.PairConnectError, match="could not connect"):
+    with raises_key("pair_connect_failed", pairing.PairConnectError):
         await pairing.async_pair(hass, PROXY_OFFER, MAC, SECRET_PIN, wait=0)
     assert len(calls) == 2  # tried twice
     # the second attempt reaches the sensor
@@ -497,7 +498,8 @@ async def test_flow_reports_a_pairer_that_could_not_connect(hass: HomeAssistant,
         ctx,
         patch("custom_components.pvvx_ota.config_flow.pairing_proxies", return_value=[PROXY_OFFER]),
         patch(
-            "custom_components.pvvx_ota.config_flow.async_pair", AsyncMock(side_effect=pairing.PairConnectError("no"))
+            "custom_components.pvvx_ota.config_flow.async_pair",
+            AsyncMock(side_effect=pairing.PairConnectError("proxy-1", MAC)),
         ),
     ):
         r = await hass.config_entries.flow.async_configure(r["flow_id"], {})
@@ -631,7 +633,7 @@ async def test_a_pairer_that_cannot_connect_or_a_service_error_ends_the_attempt_
 ):
     r = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_BLUETOOTH}, data=svc())
     ctx, _ = connections(refused())
-    errors = iter([pairing.PairConnectError("no"), HomeAssistantError("service gone")])
+    errors = iter([pairing.PairConnectError("proxy-1", MAC), HomeAssistantError("service gone")])
 
     async def pair(*args):
         raise next(errors)

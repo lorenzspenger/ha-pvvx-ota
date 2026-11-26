@@ -21,7 +21,6 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers import selector
 
-from . import get_shared
 from .const import (
     CONF_AUTO_CLOCK_SYNC,
     CONF_AUTO_RESTORE_ENCRYPTION,
@@ -42,6 +41,7 @@ from .device import async_connected, connected_source
 from .ota import NotPvvxError, OtaError, PairingRequiredError, read_cfg
 from .pairing import PairConnectError, async_pair, pairing_proxies
 from .registry import find_devices
+from .shared import get_shared
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -83,6 +83,11 @@ def display_name(hass: HomeAssistant, info: BluetoothServiceInfoBleak) -> str:
     device = next(iter(find_devices(hass, address)), None)
     name = (device and (device.name_by_user or device.name)) or (info.name if NAME_RE.match(info.name or "") else "")
     return f"{name} ({address[-8:]})" if name else address
+
+
+def _schema(fields: dict[Any, Any]) -> Any:
+    """A voluptuous schema, typed loosely: Home Assistant's own annotations name probatio's classes, which it still accepts here."""
+    return vol.Schema(fields)
 
 
 @dataclass
@@ -214,7 +219,7 @@ class PvvxOtaConfigFlow(ConfigFlow, domain=DOMAIN):
     def _pin_form(self, step_id: str, name: str, errors: dict[str, str] | None = None) -> ConfigFlowResult:
         return self.async_show_form(
             step_id=step_id,
-            data_schema=vol.Schema(
+            data_schema=_schema(
                 {
                     vol.Required(CONF_PIN): selector.NumberSelector(
                         selector.NumberSelectorConfig(min=1, max=999999, step=1, mode=selector.NumberSelectorMode.BOX)
@@ -418,7 +423,7 @@ class PvvxOtaConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="no_devices_found")
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema(
+            data_schema=_schema(
                 {vol.Required(CONF_ADDRESS): vol.In({a: display_name(self.hass, i) for a, i in self._found.items()})}
             ),
             errors=errors,
@@ -433,7 +438,7 @@ class PvvxOptionsFlow(OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(data={**self.config_entry.options, **user_input})
         opts = self.config_entry.options
-        schema = vol.Schema(
+        schema = _schema(
             {
                 vol.Required(
                     CONF_MIN_BATTERY_V, default=opts.get(CONF_MIN_BATTERY_V, MIN_BATTERY_V)

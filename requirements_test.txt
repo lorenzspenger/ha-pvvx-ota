@@ -1,5 +1,5 @@
-pytest-homeassistant-custom-component
-ruff
+pytest-homeassistant-custom-component==0.13.375  # pins homeassistant 2026.10.4
+ruff==0.17.6
 # Home Assistant's bluetooth + usb component requirements
 bleak-retry-connector
 bluetooth-adapters

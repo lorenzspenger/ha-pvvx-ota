@@ -10,17 +10,19 @@ from homeassistant.config_entries import SOURCE_BLUETOOTH, SOURCE_USER
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pvvx_ota import ota
 from custom_components.pvvx_ota.const import DOMAIN
+from custom_components.pvvx_ota.errors import ha_error
 from custom_components.pvvx_ota.firmware import FirmwareSource, parse_catalog
 
 from .fake_gatt import FakeClient
 from .test_ota import CATALOG, image
+from .translated import raises_key
 
 MAC = "A4:C1:38:00:00:01"
 
@@ -173,7 +175,7 @@ def patch_connection(client: FakeClient | None, calls: list | None = None):
     @asynccontextmanager
     async def fake(hass, address, name):
         if client is None:
-            raise HomeAssistantError(f"{name} is not connectable right now")
+            raise ha_error("not_connectable", name=name, address=MAC, reason="not heard")
         try:
             yield client
         finally:
@@ -277,7 +279,7 @@ async def test_install_refuses_unknown_hw(hass: HomeAssistant, enable_bluetooth)
 async def test_install_not_connectable(hass: HomeAssistant, enable_bluetooth):
     await setup_entry(hass, FakeClient(cfg=bytes([0x55, 0x58, 0, 0, 0, 0, 10, 4, 0x8B, 0, 55, 0])))
     p1, p2 = patch_catalog()
-    with p1, p2, patch_connection(None), pytest.raises(HomeAssistantError, match="not connectable"):
+    with p1, p2, patch_connection(None), raises_key("not_connectable"):
         await hass.services.async_call("update", "install", {"entity_id": ENTITY}, blocking=True)
 
 
@@ -288,7 +290,7 @@ async def test_flash_file_board_mismatch_and_allowlist(hass: HomeAssistant, enab
     bad.write_bytes(image())
     p1, p2 = patch_catalog()
     with p1, p2, patch_connection(client):
-        with pytest.raises(HomeAssistantError, match="allowed directory"):
+        with raises_key("path_not_allowed", ServiceValidationError):
             await hass.services.async_call(DOMAIN, "flash_file", {"entity_id": ENTITY, "path": str(bad)}, blocking=True)
         hass.config.allowlist_external_dirs.add(str(tmp_path))
         with pytest.raises(HomeAssistantError, match="board"):  # device is hw 0 = ATC
@@ -546,7 +548,7 @@ async def test_connect_is_bounded_and_says_it_is_not_a_pin(hass: HomeAssistant, 
         patch.object(device, "establish_connection", hang),
         patch.object(device.bluetooth, "async_ble_device_from_address", return_value=BLEDevice(MAC, "x", {})),
     ):
-        with pytest.raises(HomeAssistantError, match="not a PIN problem"):
+        with raises_key("connect_timeout"):
             async with device.async_connected(hass, MAC, "ATC_000001"):
                 pass
 

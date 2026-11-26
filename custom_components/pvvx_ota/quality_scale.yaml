@@ -48,8 +48,8 @@ rules:
     status: done
   # Silver
   action-exceptions:
-    status: todo
-    comment: Failures raise HomeAssistantError, but bad input (key format, PIN range, path not allowed) still raises HomeAssistantError instead of ServiceValidationError and the messages are not translated yet.
+    status: done
+    comment: Bad input (key format, PIN range, path not allowed or unreadable, low battery without force, missing confirmation) raises ServiceValidationError; failures of the sensor, the link or a proxy raise HomeAssistantError. Both are translated.
   config-entry-unloading:
     status: done
   docs-configuration-parameters:
@@ -75,7 +75,10 @@ rules:
   test-coverage:
     status: done
     comment: Branch coverage 95 % or more for every module, enforced in the Tests workflow (scripts/check_module_coverage.py).
-  # Gold / Platinum, not claimed
+  # Gold / Platinum, only what is checked
+  exception-translations:
+    status: done
+    comment: Every raised error is a translation key under exceptions in strings.json (en and de, tests/test_translations.py checks keys and placeholders).
   strict-typing:
-    status: todo
-    comment: mypy runs in CI but not in strict mode (untyped GATT client parameters, two modules with relaxed error codes).
+    status: done
+    comment: mypy strict passes on the package in CI with no per-module overrides (Home Assistant's schema types are named probatio's, so the voluptuous schemas are typed loosely in two places). Custom integrations ship no py.typed.

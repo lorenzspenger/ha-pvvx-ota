@@ -5,15 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from . import config as cfgmod
-from . import get_shared
 from .const import DOMAIN
+from .shared import PvvxConfigEntry, get_shared
 
 TO_REDACT = {"bindkey", "bind_key", "key", "pin", "pincode", "password", "token", "passkey"}
 
@@ -32,7 +31,7 @@ def _decode(raw: bytes | None, hw_id: int | None) -> dict[str, Any] | None:
     return out
 
 
-async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
+async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: PvvxConfigEntry) -> dict[str, Any]:
     """Diagnostics for one sensor."""
     shared = get_shared(hass)
     store = getattr(entry, "runtime_data", None)
