@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # hassfest and the HACS action are meant to follow their moving refs (their documentation says @master / @main): new validation rules should
+      # show up here before users hit them, so they are deliberately not pinned
       - uses: home-assistant/actions/hassfest@master
 
   hacs:

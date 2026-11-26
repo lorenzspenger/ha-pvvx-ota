@@ -9,24 +9,24 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import CONF_BETA
-from .entity import PvvxConfigEntity, get_store, wanted
+from .entity import PvvxConfigEntity, wanted
 from .shared import PvvxConfigEntry
 
-# key -> (name, enabled by default). The PHY switches are opt-in: coded-PHY/BT5 adverts may not reach ESP32 proxies,
+# key -> enabled by default. The PHY switches are opt-in: coded-PHY/BT5 adverts may not reach ESP32 proxies,
 # the sensor can vanish from HA until it is power cycled (long range resets on power-off).
 PARALLEL_UPDATES = 1  # one Bluetooth operation at a time, like the shared lock
 
 
 SWITCHES = {
-    "show_battery": ("Show battery on display", False),
-    "comfort_smiley": ("Comfort smiley", False),
-    "screen_off": ("Screen off", False),
-    "x100": ("Two decimals on display", False),
-    "time_am_pm": ("12-hour clock", False),
-    "date_ddmm": ("Date as DD/MM", False),
-    "show_weekday": ("Show weekday", False),
-    "longrange": ("Long range PHY", False),
-    "bt5phy": ("BT5 PHY", False),
+    "show_battery": False,
+    "comfort_smiley": False,
+    "screen_off": False,
+    "x100": False,
+    "time_am_pm": False,
+    "date_ddmm": False,
+    "show_weekday": False,
+    "longrange": False,
+    "bt5phy": False,
 }
 # entity key -> config field when they differ: the sensor stores "weekday hidden", the switch says "show weekday"
 FIELD_OF = {"show_weekday": "not_day_of_week"}
@@ -39,25 +39,19 @@ WARNINGS = {
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: PvvxConfigEntry, add: AddConfigEntryEntitiesCallback) -> None:
-    store = get_store(hass, entry)
+    store = entry.runtime_data
     add([BetaSwitch(hass, entry)])  # a local option: always there
-    add(
-        [
-            FlagSwitch(hass, entry, key, name, on)
-            for key, (name, on) in SWITCHES.items()
-            if wanted(store, FIELD_OF.get(key, key))
-        ]
-    )
+    add([FlagSwitch(hass, entry, key, on) for key, on in SWITCHES.items() if wanted(store, FIELD_OF.get(key, key))])
 
 
 class FlagSwitch(PvvxConfigEntity, SwitchEntity):
     field_key: str
 
-    def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry, key: str, name: str, enabled_default: bool) -> None:
+    def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry, key: str, enabled_default: bool) -> None:
         self.field_key = FIELD_OF.get(key, key)
         self.inverted = key in INVERTED
         self.warning = WARNINGS.get(key)
-        super().__init__(hass, entry, key, name, enabled_default)
+        super().__init__(hass, entry, key, enabled_default)
 
     @property
     def is_on(self) -> bool | None:
@@ -78,7 +72,7 @@ class BetaSwitch(PvvxConfigEntity, SwitchEntity):
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
         self._entry = entry
-        super().__init__(hass, entry, "beta_firmware", "Beta firmware", enabled_default=False)
+        super().__init__(hass, entry, "beta_firmware", enabled_default=False)
 
     @property
     def available(self) -> bool:

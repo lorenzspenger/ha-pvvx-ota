@@ -21,7 +21,6 @@ POST_FLASH_DELAY = 90  # seconds the sensor gets to boot before the first versio
 MAX_DOWNLOAD = 0x30000
 FIRST_READ_STAGGER = 4.0  # seconds between the first reads of the entries when HA starts (proxies are shared)
 FIRST_READ_RETRY = (300.0, 900.0, 3600.0)  # waits before the retries of a failed first read; then the 12 h poll
-CONF_ADDRESS = "address"
 CONF_VERSION = "installed_version"
 CONF_HW_ID = "hw_id"
 CONF_SNAPSHOT = "cfg_snapshot"

@@ -52,8 +52,8 @@ def rarely_used_enabled(request, monkeypatch):
 
     orig = PvvxConfigEntity.__init__
 
-    def init(self, hass, entry, key, name, enabled_default=True):
-        orig(self, hass, entry, key, name, True if key in QUIET_BY_DEFAULT else enabled_default)
+    def init(self, hass, entry, key, enabled_default=True):
+        orig(self, hass, entry, key, True if key in QUIET_BY_DEFAULT else enabled_default)
 
     monkeypatch.setattr(PvvxConfigEntity, "__init__", init)
 

@@ -7,7 +7,7 @@ from homeassistant.components.button.const import ButtonDeviceClass
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .entity import PvvxConfigEntity, get_store, wanted
+from .entity import PvvxConfigEntity, wanted
 from .errors import ha_error
 from .shared import PvvxConfigEntry, get_shared
 
@@ -23,13 +23,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: PvvxConfigEntry, add: Ad
             SyncClockButton(hass, entry),
         ]
     )  # always there: it is how a failed read is tried again
-    if wanted(get_store(hass, entry), "adv_interval"):  # i.e. a verified firmware/layout: restore and reset make sense
+    if wanted(entry.runtime_data, "adv_interval"):  # i.e. a verified firmware/layout: restore and reset make sense
         add([RestoreButton(hass, entry), ResetButton(hass, entry)])
 
 
 class RefreshButton(PvvxConfigEntity, ButtonEntity):
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
-        super().__init__(hass, entry, "refresh_config", "Refresh configuration", enabled_default=False)
+        super().__init__(hass, entry, "refresh_config", enabled_default=False)
 
     @property
     def available(self) -> bool:
@@ -43,7 +43,7 @@ class RestoreButton(PvvxConfigEntity, ButtonEntity):
     """Writes back the settings saved just before the last flash. Never pressed automatically."""
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
-        super().__init__(hass, entry, "restore_config", "Restore previous settings")
+        super().__init__(hass, entry, "restore_config")
 
     @property
     def available(self) -> bool:
@@ -63,7 +63,7 @@ class ResetButton(PvvxConfigEntity, ButtonEntity):
     )
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
-        super().__init__(hass, entry, "reset_defaults", "Reset settings to defaults", enabled_default=False)
+        super().__init__(hass, entry, "reset_defaults", enabled_default=False)
 
     async def async_press(self) -> None:
         await self.store.async_reset_defaults()
@@ -81,7 +81,7 @@ class ReflashButton(PvvxConfigEntity, ButtonEntity):
     )
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
-        super().__init__(hass, entry, "reflash_firmware", "Reflash firmware", enabled_default=False)
+        super().__init__(hass, entry, "reflash_firmware", enabled_default=False)
 
     @property
     def available(self) -> bool:
@@ -105,7 +105,7 @@ class RebootButton(PvvxConfigEntity, ButtonEntity):
     _attr_device_class = ButtonDeviceClass.RESTART
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
-        super().__init__(hass, entry, "reboot_sensor", "Reboot sensor", enabled_default=False)
+        super().__init__(hass, entry, "reboot_sensor", enabled_default=False)
 
     @property
     def available(self) -> bool:
@@ -120,7 +120,7 @@ class SyncClockButton(PvvxConfigEntity, ButtonEntity):
     """Set the sensor's clock to the local time (command 0x23, same payload as TelinkMiFlasher's "Set Time")."""
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
-        super().__init__(hass, entry, "sync_clock", "Sync clock", enabled_default=False)
+        super().__init__(hass, entry, "sync_clock", enabled_default=False)
 
     @property
     def available(self) -> bool:

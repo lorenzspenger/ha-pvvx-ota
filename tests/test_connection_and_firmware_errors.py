@@ -1,4 +1,4 @@
-"""Error paths of the device, firmware, diagnostics, select and button code that the feature tests do not reach."""
+"""Connection, firmware catalog, diagnostics, select and button behaviour when something goes wrong."""
 
 import asyncio
 import logging

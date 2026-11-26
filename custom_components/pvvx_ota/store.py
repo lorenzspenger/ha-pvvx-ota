@@ -110,15 +110,12 @@ class ConfigStore:
         return self.available and any(self.value(k) != v for k, v in restorable.items())
 
     def _restorable(self, snap: dict[str, Any]) -> dict[str, int]:
-        caps = self.capabilities or self._stored_capabilities()
+        caps = self.capabilities or self.stored_capabilities()
         return {k: v for k, v in snap.get("fields", {}).items() if k in caps}
 
-    def _stored_capabilities(self) -> set[str]:
+    def stored_capabilities(self) -> set[str]:
         """Capabilities from the version and board stored in the entry (what entity.wanted decides from)."""
-        ver = self.entry.data.get(CONF_VERSION)
-        if ver not in cfgmod.VERIFIED_VERSIONS:
-            return set()
-        return cfgmod.capabilities(bytes([0x55, ver]) + bytes(cfgmod.MIN_LEN - 2), self.hw_id)
+        return cfgmod.capabilities_for(self.entry.data.get(CONF_VERSION), self.hw_id)
 
     # -- listeners -----------------------------------------------------
     @callback

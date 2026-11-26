@@ -10,7 +10,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import calib as calibmod
 from .const import CONF_CALIB_KNOWN, CONF_VERSION, DOMAIN
-from .entity import PvvxConfigEntity, get_store, wanted
+from .entity import PvvxConfigEntity, wanted
 from .shared import PvvxConfigEntry
 
 PARALLEL_UPDATES = 1  # one Bluetooth operation at a time, like the shared lock
@@ -20,7 +20,7 @@ ADV_UNIT_S = 0.0625  # the sensor counts in 62.5 ms
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: PvvxConfigEntry, add: AddConfigEntryEntitiesCallback) -> None:
-    store = get_store(hass, entry)
+    store = entry.runtime_data
     ents: list[PvvxConfigEntity] = []
     if wanted(store, "adv_interval"):
         ents.append(AdvIntervalNumber(hass, entry))
@@ -48,7 +48,7 @@ class AdvIntervalNumber(PvvxConfigEntity, NumberEntity):
     _attr_native_step = ADV_UNIT_S
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
-        super().__init__(hass, entry, "adv_interval", "Advertising interval", enabled_default=False)
+        super().__init__(hass, entry, "adv_interval", enabled_default=False)
 
     @property
     def native_value(self) -> float | None:
@@ -71,7 +71,7 @@ class MeasureIntervalNumber(PvvxConfigEntity, NumberEntity):
     _attr_native_step = 1
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
-        super().__init__(hass, entry, "measure_interval", "Measure interval", enabled_default=False)
+        super().__init__(hass, entry, "measure_interval", enabled_default=False)
 
     @property
     def native_value(self) -> float | None:
@@ -96,7 +96,7 @@ class OffsetNumber(PvvxConfigEntity, NumberEntity):
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry, key: str, unit: str) -> None:
         self._key = key
         self._attr_native_unit_of_measurement = unit
-        super().__init__(hass, entry, key, key, enabled_default=False)
+        super().__init__(hass, entry, key, enabled_default=False)
 
     @property
     def available(self) -> bool:

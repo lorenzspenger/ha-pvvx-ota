@@ -173,6 +173,7 @@ class PvvxUpdateEntity(UpdateEntity):
         self._queued_task: asyncio.Task[None] | None = None  # set while this entity waits in the firmware queue
         self._quiet_until = 0.0  # event-loop time until which async_update opens no connection (after a flash)
         self._cancel_device_poll: Callable[[], None] | None = None
+        self._cancel_verify: Callable[[], None] | None = None  # the timer of the post-flash version check
         self._poll_seconds_set: int | None = -1  # the interval the timer runs with (-1: none scheduled yet)
 
     async def async_added_to_hass(self) -> None:
@@ -189,6 +190,7 @@ class PvvxUpdateEntity(UpdateEntity):
             async_track_time_interval(self.hass, self._catalog_poll_due, timedelta(seconds=CATALOG_POLL_INTERVAL))
         )
         self.async_on_remove(self._stop_device_poll)
+        self.async_on_remove(self._stop_verify)
         self._schedule_device_poll()
 
     async def _async_first_update(self) -> None:
@@ -247,6 +249,12 @@ class PvvxUpdateEntity(UpdateEntity):
         """The configured interval of the Bluetooth version read in seconds, None for "never" (on demand, after a flash)."""
         choice = self._entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
         return POLL_CHOICES[choice] if choice in POLL_CHOICES else POLL_CHOICES[DEFAULT_POLL_INTERVAL]
+
+    @callback
+    def _stop_verify(self) -> None:
+        if self._cancel_verify is not None:
+            self._cancel_verify()
+            self._cancel_verify = None
 
     @callback
     def _stop_device_poll(self) -> None:
@@ -686,4 +694,6 @@ class PvvxUpdateEntity(UpdateEntity):
                 self.hass, self._async_verify_after_flash(expected, unverified), "pvvx_ota_verify"
             )
 
-        self.async_on_remove(async_call_later(self.hass, POST_FLASH_DELAY, _start))
+        if self._cancel_verify is not None:
+            self._cancel_verify()  # a newer flash replaces the check that is still waiting
+        self._cancel_verify = async_call_later(self.hass, POST_FLASH_DELAY, _start)

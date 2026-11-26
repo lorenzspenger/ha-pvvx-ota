@@ -1,8 +1,7 @@
-"""Update entity: error paths and edge cases."""
+"""Update entity behaviour: catalog and version polling, errors, timers, attributes, and what happens after a flash."""
 
 import asyncio
 import logging
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -38,11 +37,21 @@ async def test_first_update_survives_a_missing_catalog(setup, caplog):
     assert "offline" in caplog.text
 
 
-async def test_unrelated_device_registry_events_do_not_reload(setup):
+async def test_renaming_the_device_does_not_reload_but_a_new_bthome_device_does(setup):
+    """Real registry changes: a rename is none of our business; a BTHome device appearing re-links the entities by reloading."""
+    from homeassistant.helpers import device_registry as dr
+
     hass, entry, entity = setup
+    registry = dr.async_get(hass)
+    own = registry.async_get(entity.registry_entry.device_id)
+    assert own is not None
     with patch.object(hass.config_entries, "async_schedule_reload") as reload:
-        entity._registry_event(SimpleNamespace(data={"action": "update", "changes": {"name_by_user": "x"}}))
-    reload.assert_not_called()
+        registry.async_update_device(own.id, name_by_user="Bathroom")
+        await hass.async_block_till_done()
+        reload.assert_not_called()
+        bthome_device(hass)  # BTHome registers the same sensor
+        await hass.async_block_till_done()
+        reload.assert_called_once_with(entry.entry_id)
 
 
 async def test_state_without_a_catalog_claims_nothing(setup):
@@ -387,3 +396,24 @@ async def test_volatile_attributes_are_kept_out_of_the_recorder(setup):
     assert {"expected_proxy", "expected_proxy_rssi", "queued_position", "last_error", "in_progress"} <= excluded
     # and what describes the sensor stays recorded
     assert not {"installed_version", "latest_version", "hardware_id", "board", "beta_version"} & excluded
+
+
+async def test_a_newer_flash_replaces_the_waiting_version_check_and_removal_cancels_it(setup):
+    hass, entry, entity = setup
+    cancelled = []
+
+    def fake_call_later(hass_, delay, cb):
+        index = len(cancelled)
+        cancelled.append(False)
+
+        def cancel():
+            cancelled[index] = True
+
+        return cancel
+
+    with patch.object(upd, "async_call_later", fake_call_later):
+        entity._schedule_verify()
+        entity._schedule_verify()  # the second flash supersedes the first check
+        assert cancelled == [True, False]
+        entity._stop_verify()  # unloading drops the one that is left
+    assert cancelled == [True, True]

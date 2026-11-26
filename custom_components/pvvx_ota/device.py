@@ -14,11 +14,11 @@ from bleak_retry_connector import BleakClientWithServiceCache, establish_connect
 from habluetooth import BluetoothReachabilityIntent, BluetoothScannerDevice
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 
 from .bt_internals import connected_scanner, pinned_client_class
 from .const import (
-    CONF_ADDRESS,
     CONF_BONDED_SCANNER,
     CONF_PIN,
     CONF_PIN_BONDED,

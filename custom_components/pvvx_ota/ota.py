@@ -45,6 +45,15 @@ FLASH_TIMEOUT = 90 * 60.0
 DATA_RESPONSE = False
 END_MARKER_GRACE = 8.0  # seconds to watch the device after the end marker
 
+# Connection parameters asked of the proxy for the transfer: min/max interval 6 (x1.25 ms = 7.5 ms), latency 0,
+# supervision timeout 600 (x10 ms = 6 s). The sensor asks for 20 ms / latency 49 about 1 s after connecting and the proxy's
+# Bluedroid accepts that, so the request is made right before the start command and once more after it.
+FAST_LINK = (6, 6, 0, 600)
+FAST_LINK_TIMEOUT = 10.0
+DISCONNECT_AFTER_FLASH_TIMEOUT = 8.0
+DELAYED_REREQUEST_AFTER = 2.0  # s since connect: the sensor asks for 20 ms/latency 49 about 1 s after connecting
+TIMING_LOG_SECONDS = 15.0  # log every status window for this long after the start
+
 
 class OtaError(Exception):
     """Base class for OTA failures."""
@@ -336,16 +345,6 @@ async def _after_marker(client: GattClient) -> None:
     raise OtaDeviceError("device did not reboot after the end marker; the new firmware was not activated")
 
 
-# Connection parameters asked of the proxy for the transfer: min/max interval 6 (x1.25 ms = 7.5 ms), latency 0,
-# supervision timeout 600 (x10 ms = 6 s). The sensor asks for 20 ms / latency 49 about 1 s after connecting and the proxy's
-# Bluedroid accepts that, so the request is made right before the start command and once more after it.
-FAST_LINK = (6, 6, 0, 600)
-FAST_LINK_TIMEOUT = 10.0
-DISCONNECT_AFTER_FLASH_TIMEOUT = 8.0
-DELAYED_REREQUEST_AFTER = 2.0  # s since connect: the sensor asks for 20 ms/latency 49 about 1 s after connecting
-TIMING_LOG_SECONDS = 15.0  # log every status window for this long after the start
-
-
 async def request_fast_link(client: GattClient, when: str) -> bool:
     """Ask the proxy for a short connection interval (habluetooth -> bleak-esphome, feature flag
     CONNECTION_PARAMS_SETTING). Never fatal: every failure or missing method is logged and the flash goes on.
@@ -374,6 +373,134 @@ async def request_fast_link(client: GattClient, when: str) -> bool:
     return True
 
 
+async def _start_transfer(
+    client: GattClient, wt: float, loop: asyncio.AbstractEventLoop, t_conn: float, connect_known: bool
+) -> None:
+    """Start commands plus the fast-connection requests around them."""
+
+    def since_connect() -> str:
+        return f"+{loop.time() - t_conn:.2f} s since connect"
+
+    await request_fast_link(client, f"before start, {since_connect()}")
+    await _write(client, bytes.fromhex("00ff"), True, wt)  # start
+    await _write(client, bytes.fromhex("01ff"), True, wt)
+    await request_fast_link(client, f"after start, {since_connect()}")
+    # The sensor's own connection-parameter request (20 ms, latency 49) can land ~1 s after the connect, after our
+    # first requests: wait until DELAYED_REREQUEST_AFTER since the connect, then ask once more.
+    wait = DELAYED_REREQUEST_AFTER - (loop.time() - t_conn)
+    if connect_known and wait > 0:  # without a known connect time there is nothing to wait for
+        await asyncio.sleep(wait)
+    await request_fast_link(client, f"delayed, {since_connect()}")
+    await asyncio.sleep(0.3)
+
+
+class _SlowLinkProbe:
+    """Judges the throughput at the first status window after SLOW_PROBE_SECONDS of data. A slow link gets one new request for
+    the fast connection parameters and another probe period; if it is still slow the flash stops, and nothing is activated
+    before the end marker, so the sensor keeps its old firmware."""
+
+    def __init__(self, t0: float) -> None:
+        self.open = True
+        self.asked = False
+        self.t0 = t0
+        self.b0 = 0
+
+    async def check(
+        self, client: GattClient, done: int, now: float, context: str, since_connect: Callable[[], str]
+    ) -> None:
+        if not self.open or now - self.t0 < SLOW_PROBE_SECONDS:
+            return
+        rate = (done - self.b0) / (now - self.t0)
+        if rate >= SLOW_BLOCKS_PER_S:
+            self.open = False
+        elif not self.asked:
+            self.asked = True
+            _LOGGER.debug(
+                "OTA link slow (%.1f blocks/s, below %.0f): asking for the fast connection parameters again",
+                rate,
+                SLOW_BLOCKS_PER_S,
+            )
+            await request_fast_link(client, f"slow link, {since_connect()}")
+            self.t0, self.b0 = asyncio.get_running_loop().time(), done
+        else:
+            where = f", {context}" if context else ""
+            raise OtaSlowLink(
+                f"link too slow ({rate:.1f} blocks/s{where}): the flash was stopped before the end marker to save "
+                "the battery, the sensor keeps its old firmware; try again later or move the sensor's pairing to a closer proxy"
+            )
+
+
+class _Timing:
+    """Throughput bookkeeping for the DEBUG log lines: one line per status window for the first TIMING_LOG_SECONDS (the first
+    one at INFO) and one per 10 % of progress."""
+
+    def __init__(self, t_start: float, total: int, since_connect: Callable[[], str]) -> None:
+        self.t_start = self.t_mark = self.t_win = t_start
+        self.total = total
+        self.since_connect = since_connect
+        self.status_time = 0.0
+        self.status_n = 0
+        self.blocks_mark = self.blocks_win = 0
+        self.first_window = True
+        self.last_pct = -1
+
+    def window(self, done: int, status_seconds: float, now: float) -> None:
+        """A status window of ``done`` blocks in total just ended."""
+        self.status_time += status_seconds
+        self.status_n += 1
+        n_win = done - self.blocks_win
+        win_s = max(now - self.t_win, 1e-9)
+        if now - self.t_start <= TIMING_LOG_SECONDS:
+            # the first window at INFO (the link right after the start), the rest at DEBUG
+            _LOGGER.log(
+                logging.INFO if self.first_window else logging.DEBUG,
+                "OTA window +%.2f s since start (%s): %s blocks in %.3f s = %.1f ms/block (%.1f blocks/s)",
+                now - self.t_start,
+                self.since_connect(),
+                n_win,
+                win_s,
+                1000 * win_s / n_win,
+                n_win / win_s,
+            )
+        self.first_window = False
+        self.t_win, self.blocks_win = now, done
+
+    def percent(self, done: int, now: float, progress: Callable[[int], None] | None) -> None:
+        pct = done * 100 // self.total
+        if not progress or pct == self.last_pct:
+            return
+        self.last_pct = pct
+        progress(pct)
+        if pct // 10 != (pct - 1) // 10 or pct == 100:
+            blocks = done - self.blocks_mark
+            _LOGGER.debug(
+                "OTA %s%%: %.1f blocks/s over %.1f s; status reads %s x %.2f s (%.0f%% of the time)",
+                pct,
+                blocks / max(now - self.t_mark, 1e-9),
+                now - self.t_mark,
+                self.status_n,
+                self.status_time / max(self.status_n, 1),
+                100 * self.status_time / max(now - self.t_mark, 1e-9),
+            )
+            self.t_mark, self.blocks_mark, self.status_time, self.status_n = now, done, 0.0, 0
+
+
+async def _end_transfer(client: GattClient, marker: bytes, wt: float, total: int, started: float) -> None:
+    """Every data block has to have reached and been accepted by the device before the end marker (the status read flushes the
+    queued writes); on success it then verifies the image and reboots, dropping the link."""
+    loop = asyncio.get_running_loop()
+    await _status(client, wt, "after the last block")
+    _LOGGER.debug("All %s blocks sent and accepted after %.0f s, sending end marker", total, loop.time() - started)
+    try:
+        await _write(client, marker, False, wt)
+    except OtaTimeout:
+        raise
+    except Exception as err:  # noqa: BLE001 - disconnect while rebooting is expected
+        _LOGGER.debug("End marker write ended with %s: %s (device rebooting?)", type(err).__name__, err)
+    await _after_marker(client)
+    await _release_link(client)
+
+
 async def _flash(
     client: GattClient,
     fw: bytes,
@@ -391,106 +518,25 @@ async def _flash(
 
     if context:
         _LOGGER.debug("OTA link: %s", context)
-    await request_fast_link(client, f"before start, {since_connect()}")
-    await _write(client, bytes.fromhex("00ff"), True, wt)  # start
-    await _write(client, bytes.fromhex("01ff"), True, wt)
-    await request_fast_link(client, f"after start, {since_connect()}")
-    # The sensor's own connection-parameter request (20 ms, latency 49) can land ~1 s after the connect, after our
-    # first requests: wait until DELAYED_REREQUEST_AFTER since the connect, then ask once more.
-    wait = DELAYED_REREQUEST_AFTER - (loop.time() - t_conn)
-    if connected_at is not None and wait > 0:  # without a known connect time there is nothing to wait for
-        await asyncio.sleep(wait)
-    await request_fast_link(client, f"delayed, {since_connect()}")
-    await asyncio.sleep(0.3)
+    await _start_transfer(client, wt, loop, t_conn, connected_at is not None)
     total = -(-len(fw) // BLOCK)
-    last_pct = -1
     _LOGGER.debug(
         "Starting OTA: %s bytes, %s blocks, status every %s blocks (%s)", len(fw), total, status_every, since_connect()
     )
-    t_start = t_mark = t_win = loop.time()
-    status_time, status_n, blocks_mark, blocks_win = 0.0, 0, 0, 0
-    first_window = True
-    # throughput probe: judged at the first status window after SLOW_PROBE_SECONDS; a slow link gets one new request for the
-    # fast connection parameters and another probe period, then the flash stops (nothing is activated before the end marker)
-    probe_open, probe_asked, probe_t0, probe_b0 = True, False, t_start, 0
-    for i, p in ota_packets(fw):
+    t_start = loop.time()
+    timing, probe = _Timing(t_start, total, since_connect), _SlowLinkProbe(t_start)
+    for i, packet in ota_packets(fw):
         if i == total:
-            # Make sure every data block has really reached and been accepted by the device
-            # before the end marker; the final status read flushes the queued writes.
-            await _status(client, wt, "after the last block")
-            # End marker: on success the device verifies the image and reboots, dropping the link.
-            _LOGGER.debug(
-                "All %s blocks sent and accepted after %.0f s, sending end marker", total, loop.time() - t_start
-            )
-            try:
-                await _write(client, p, False, wt)
-            except OtaTimeout:
-                raise
-            except Exception as err:  # noqa: BLE001 - disconnect while rebooting is expected
-                _LOGGER.debug("End marker write ended with %s: %s (device rebooting?)", type(err).__name__, err)
-            await _after_marker(client)
-            await _release_link(client)
+            await _end_transfer(client, packet, wt, total, t_start)
             break
-        await _write(client, p, DATA_RESPONSE, wt)
-        if (i + 1) % status_every == 0:
-            t0 = loop.time()
-            await _status(client, wt, f"at block {i}")
-            status_time += loop.time() - t0
-            status_n += 1
-            now_w = loop.time()
-            n_win = i + 1 - blocks_win
-            win_s = max(now_w - t_win, 1e-9)
-            rate = n_win / win_s
-            if now_w - t_start <= TIMING_LOG_SECONDS:
-                # the first window at INFO (the link right after the start), the rest at DEBUG
-                _LOGGER.log(
-                    logging.INFO if first_window else logging.DEBUG,
-                    "OTA window +%.2f s since start (%s): %s blocks in %.3f s = %.1f ms/block (%.1f blocks/s)",
-                    now_w - t_start,
-                    since_connect(),
-                    n_win,
-                    win_s,
-                    1000 * win_s / n_win,
-                    rate,
-                )
-            first_window = False
-            t_win, blocks_win = loop.time(), i + 1
-            if probe_open and now_w - probe_t0 >= SLOW_PROBE_SECONDS:
-                probe_rate = (i + 1 - probe_b0) / (now_w - probe_t0)
-                if probe_rate >= SLOW_BLOCKS_PER_S:
-                    probe_open = False
-                elif not probe_asked:
-                    probe_asked = True
-                    _LOGGER.debug(
-                        "OTA link slow (%.1f blocks/s, below %.0f): asking for the fast connection parameters again",
-                        probe_rate,
-                        SLOW_BLOCKS_PER_S,
-                    )
-                    await request_fast_link(client, f"slow link, {since_connect()}")
-                    probe_t0, probe_b0 = loop.time(), i + 1
-                else:
-                    where = f", {context}" if context else ""
-                    raise OtaSlowLink(
-                        f"link too slow ({probe_rate:.1f} blocks/s{where}): the flash was stopped before the end marker to save "
-                        "the battery, the sensor keeps its old firmware; try again later or move the sensor's pairing to a closer proxy"
-                    )
-            pct = (i + 1) * 100 // total
-            if progress and pct != last_pct:
-                last_pct = pct
-                progress(pct)
-                if pct // 10 != (pct - 1) // 10 or pct == 100:
-                    now = loop.time()
-                    done = i + 1 - blocks_mark
-                    _LOGGER.debug(
-                        "OTA %s%%: %.1f blocks/s over %.1f s; status reads %s x %.2f s (%.0f%% of the time)",
-                        pct,
-                        done / max(now - t_mark, 1e-9),
-                        now - t_mark,
-                        status_n,
-                        status_time / max(status_n, 1),
-                        100 * status_time / max(now - t_mark, 1e-9),
-                    )
-                    t_mark, blocks_mark, status_time, status_n = now, i + 1, 0.0, 0
+        await _write(client, packet, DATA_RESPONSE, wt)
+        if (i + 1) % status_every:
+            continue
+        t0 = loop.time()
+        await _status(client, wt, f"at block {i}")
+        timing.window(i + 1, loop.time() - t0, loop.time())
+        await probe.check(client, i + 1, loop.time(), context, since_connect)
+        timing.percent(i + 1, loop.time(), progress)
     if progress:
         progress(100)
     return {"blocks": total, "bytes": len(fw), "seconds": round(loop.time() - t_start, 1), "status_every": status_every}

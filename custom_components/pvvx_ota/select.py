@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import config as cfgmod
-from .entity import PvvxConfigEntity, get_store, wanted
+from .entity import PvvxConfigEntity, wanted
 from .shared import PvvxConfigEntry
 
 PARALLEL_UPDATES = 1  # one Bluetooth operation at a time, like the shared lock
@@ -17,7 +17,7 @@ UNITS = {"°C": 0, "°F": 1}
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: PvvxConfigEntry, add: AddConfigEntryEntitiesCallback) -> None:
-    store = get_store(hass, entry)
+    store = entry.runtime_data
     ents: list[PvvxConfigEntity] = []
     if wanted(store, "rf_tx_power"):
         ents.append(TxPowerSelect(hass, entry))
@@ -40,7 +40,7 @@ class TxPowerSelect(PvvxConfigEntity, SelectEntity):
     field_key = "rf_tx_power"
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
-        super().__init__(hass, entry, "rf_tx_power", "TX power", enabled_default=False)
+        super().__init__(hass, entry, "rf_tx_power", enabled_default=False)
 
     def _current_label(self) -> str | None:
         v = self.store.value("rf_tx_power")
@@ -70,7 +70,7 @@ class UnitSelect(PvvxConfigEntity, SelectEntity):
     _attr_options = list(UNITS)
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
-        super().__init__(hass, entry, "temp_unit_display", "Display temperature unit", enabled_default=False)
+        super().__init__(hass, entry, "temp_unit_display", enabled_default=False)
 
     @property
     def current_option(self) -> str | None:
@@ -86,7 +86,7 @@ class SmileySelect(PvvxConfigEntity, SelectEntity):
     _attr_options = cfgmod.SMILEYS
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
-        super().__init__(hass, entry, "smiley", "Smiley", enabled_default=False)
+        super().__init__(hass, entry, "smiley", enabled_default=False)
 
     @property
     def current_option(self) -> str | None:
@@ -104,7 +104,7 @@ class ScreenTypeSelect(PvvxConfigEntity, SelectEntity):
     field_key = "screen_type"
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
-        super().__init__(hass, entry, "screen_type", "Display content", enabled_default=False)
+        super().__init__(hass, entry, "screen_type", enabled_default=False)
 
     def _current_label(self) -> str | None:
         v = self.store.value("screen_type")
@@ -133,7 +133,7 @@ class AdvTypeSelect(PvvxConfigEntity, SelectEntity):
     warning = "Anything but BTHome stops Home Assistant's BTHome integration from receiving this sensor's data."
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
-        super().__init__(hass, entry, "adv_type", "Advertising type", enabled_default=False)
+        super().__init__(hass, entry, "adv_type", enabled_default=False)
 
     @property
     def current_option(self) -> str | None:

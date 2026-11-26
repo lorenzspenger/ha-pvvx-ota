@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.23.0-beta.6
+
+Git tag `v0.23.0-beta.6`, manifest version `0.23.0b6`.
+
+- **Cleanup, no behaviour change**: the unused `name` parameter is gone from every settings entity, the entity helper `get_store` is gone, and the capabilities an entry stores are computed by one function (`config.capabilities_for`) instead of a fake config block.
+- **The flash routine is split** into the start sequence, a slow-link probe, the timing log and the end-of-transfer step; the flash tests pass unchanged.
+- **A newer flash replaces the waiting post-flash version check** instead of stacking timers, and unloading cancels it.
+- **Tests renamed after what they check** (`test_connection_and_firmware_errors`, `test_store_behaviour`, `test_update_entity`); the device-registry test now uses real registry changes instead of a fake event.
+- **CI**: all Python test and lint dependencies (including the Bluetooth libraries) are pinned, Dependabot watches the actions and the pins, and the workflow says why `hassfest` and the HACS action stay on their documented moving refs.
+
 ## 0.23.0-beta.5
 
 Git tag `v0.23.0-beta.5`, manifest version `0.23.0b5`.

@@ -1448,3 +1448,12 @@ async def test_v46_sensor_gets_entities_snapshot_and_no_calibration_read(
         assert client.cfg_writes == []
     finally:
         [c.stop() for c in ctx]
+
+
+def test_capabilities_from_the_stored_version_match_the_ones_of_a_block():
+    """What the entry stores (version byte, hardware id) decides the entities before any read: the same answer as a block's."""
+    for version in sorted(cfg.VERIFIED_VERSIONS):
+        for hw in (None, 0, 9, 10, 12):
+            block = bytes([0x55, version]) + bytes(cfg.MIN_LEN - 2)
+            assert cfg.capabilities_for(version, hw) == cfg.capabilities(block, hw)
+    assert cfg.capabilities_for(0x41, 10) == set() and cfg.capabilities_for(None, 10) == set()  # layout not verified

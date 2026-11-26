@@ -1,12 +1,12 @@
 pytest-homeassistant-custom-component==0.13.375  # pins homeassistant 2026.10.4
 ruff==0.17.6
-# Home Assistant's bluetooth + usb component requirements
-bleak-retry-connector
-bluetooth-adapters
-bluetooth-auto-recovery
-bluetooth-data-tools
-dbus-fast
-habluetooth
-aiousbwatcher
-serialx
-pytest-cov
+# Home Assistant's bluetooth + usb component requirements, at the versions the tests were last run with
+bleak-retry-connector==4.7.1
+bluetooth-adapters==2.4.0
+bluetooth-auto-recovery==1.6.4
+bluetooth-data-tools==1.29.24
+dbus-fast==5.2.0
+habluetooth==7.1.3
+aiousbwatcher==1.1.2
+serialx==1.15.1
+pytest-cov==7.1.0

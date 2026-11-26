@@ -145,8 +145,16 @@ def capabilities(raw: bytes | None, hw_id: int | None) -> set[str]:
     """Field keys that can be used with this firmware version/board."""
     if raw is None or not is_verified(raw):
         return set()
+    return capabilities_for(version_of(raw), hw_id)
+
+
+def capabilities_for(version: int | None, hw_id: int | None) -> set[str]:
+    """Field keys for a firmware version byte and hardware id, without a block (what an entry stores): empty for a version
+    whose layout was not verified."""
+    if version not in VERIFIED_VERSIONS:
+        return set()
     display = DISPLAY_BY_HW.get(hw_id, frozenset()) if hw_id is not None else frozenset()
-    ver = version_of(raw) or 0
+    ver = version or 0
     missing = {k for first, keys in VERSION_EXCLUDED if ver < first for k in keys}
     return {k for k, f in FIELDS.items() if (not f.display or k in display) and k not in missing}
 
