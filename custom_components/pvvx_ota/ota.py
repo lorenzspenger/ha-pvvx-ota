@@ -53,6 +53,9 @@ FAST_LINK_TIMEOUT = 10.0
 DISCONNECT_AFTER_FLASH_TIMEOUT = 8.0
 DELAYED_REREQUEST_AFTER = 2.0  # s since connect: the sensor asks for 20 ms/latency 49 about 1 s after connecting
 TIMING_LOG_SECONDS = 15.0  # log every status window for this long after the start
+# How long a silent sensor with the link still up is given after the end marker before the flash counts as unverified: the supervision
+# timeout we ask for (FAST_LINK[3] x 10 ms) plus a margin, since a link only counts as lost when that timeout runs out.
+STALL_WINDOW = FAST_LINK[3] / 100 + 4.0
 
 
 class OtaError(Exception):
@@ -317,11 +320,17 @@ def link_dropped(client: GattClient, err: BaseException) -> bool:
 async def _after_marker(client: GattClient) -> None:
     """Watch what the device does after the end marker.
 
-    Success: it checks the image CRC and reboots, so the link drops (reads fail with a disconnect).
-    Stall: reads time out with the link still up: OtaUnverified, nothing is claimed.
+    Success: it checks the image CRC and reboots, so the link drops. The sensor is gone at once, but the link only counts as
+    lost when the supervision timeout we asked for runs out (about 6 s later, longer through a proxy), so until then reads
+    just time out with the client still connected: a timeout alone is no verdict. Only a disconnect ends the watch as success.
+    Stall: still connected and still silent after STALL_WINDOW (supervision timeout plus a margin): OtaUnverified, nothing
+    is claimed.
     Failure: it stays connected and reports a status code (e.g. "Firmware CRC check").
     """
-    for second in range(int(END_MARKER_GRACE) + 1):
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+    answered = 0  # status reads that said 0: the device is still there and has not rebooted
+    while True:
         await asyncio.sleep(1 if END_MARKER_GRACE else 0)
         try:
             async with asyncio.timeout(3):
@@ -330,15 +339,23 @@ async def _after_marker(client: GattClient) -> None:
             if link_dropped(client, err):
                 _LOGGER.debug("After the end marker the device went away (%s): it is rebooting", type(err).__name__)
                 return
-            raise OtaUnverified(
-                f"after the end marker the sensor stopped answering with the link still up ({type(err).__name__}); "
-                "the flash may or may not have been applied"
-            ) from err
+            if loop.time() - started >= STALL_WINDOW:
+                raise OtaUnverified(
+                    f"after the end marker the sensor stopped answering for {STALL_WINDOW:.0f} s with the link still up "
+                    f"({type(err).__name__}); the flash may or may not have been applied"
+                ) from err
+            _LOGGER.debug(
+                "No answer after the end marker (%s), the link is still up: waiting for it to drop", type(err).__name__
+            )
+            continue
         code = st[0] if st else 0
-        _LOGGER.debug("Status %s s after the end marker: %s", second, code)
+        _LOGGER.debug("Status %s s after the end marker: %s", answered, code)
         if code:
             msg = OTA_ERRORS[code] if code < len(OTA_ERRORS) else str(code)
             raise OtaDeviceError(f"device rejected the image after the end marker: {msg}")
+        answered += 1
+        if answered > END_MARKER_GRACE:
+            break
     _LOGGER.warning(
         "Device is still connected %s s after the end marker with status 0: it did not reboot", END_MARKER_GRACE
     )

@@ -1,6 +1,7 @@
 """Protocol tests against a fake GATT client."""
 
 import asyncio
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -88,6 +89,44 @@ async def test_flash_stall_after_the_end_marker_with_the_link_up_is_not_success(
 
 async def test_flash_stall_after_the_end_marker_with_the_link_down_is_a_reboot():
     await ota.flash(FakeClient(after_marker="stall_link_down"), image(100))
+
+
+async def test_a_rebooting_sensor_whose_link_only_drops_after_the_supervision_timeout_is_success(monkeypatch):
+    """The sensor is gone at once but the client says connected until the supervision timeout runs out: silent reads are no verdict."""
+    monkeypatch.setattr(ota, "STALL_WINDOW", 1.0)
+    c = FakeClient(after_marker="silent")
+    c.link_drops_after = 0.2  # (6 s in real life)
+    await ota.flash(c, image(100))
+    assert c.marker_sent and not c.connected_flag
+
+
+async def test_a_sensor_that_stays_silent_with_the_link_up_for_the_whole_window_is_unverified(monkeypatch):
+    monkeypatch.setattr(ota, "STALL_WINDOW", 0.3)
+    c = FakeClient(after_marker="silent")  # the link never drops
+    started = time.monotonic()
+    with pytest.raises(ota.OtaUnverified, match="stopped answering for"):
+        await ota.flash(c, image(100))
+    assert time.monotonic() - started >= 0.3  # it kept watching for the whole window
+
+
+async def test_a_status_code_after_a_silent_stretch_is_still_a_failure(monkeypatch):
+    monkeypatch.setattr(ota, "STALL_WINDOW", 1.0)
+
+    class Late(FakeClient):
+        async def read_gatt_char(self, char):
+            if self.marker_sent and time.monotonic() - self.marker_at < 0.1:
+                raise TimeoutError()
+            if self.marker_sent:
+                return bytearray([6])
+            return await super().read_gatt_char(char)
+
+    with pytest.raises(ota.OtaDeviceError, match="Firmware CRC check"):
+        await ota.flash(Late(), image(100))
+
+
+def test_the_stall_window_covers_the_supervision_timeout_that_is_requested(monkeypatch):
+    monkeypatch.undo()  # the shipped value, not the short one the test setup uses
+    assert ota.STALL_WINDOW >= ota.FAST_LINK[3] / 100 + 3  # timeout (x10 ms) plus a margin
 
 
 def test_which_failures_mean_the_link_dropped():

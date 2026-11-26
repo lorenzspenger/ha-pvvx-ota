@@ -2,6 +2,7 @@
 
 import asyncio
 import struct
+import time
 
 from bleak.exc import BleakError
 
@@ -58,6 +59,10 @@ class FakeClient:
         self.status_reads = 0
         self.disconnected = False
         self.connected_flag = True  # what is_connected reports
+        self.link_drops_after: float | None = (
+            None  # after_marker="silent": seconds after the marker until the link counts as lost
+        )
+        self.marker_at = 0.0
         self._cb = None
 
     @property
@@ -138,6 +143,7 @@ class FakeClient:
             raise BleakError("Device disconnected")
         if data[:2] == b"\x02\xff":
             self.marker_sent = True
+            self.marker_at = time.monotonic()
         if data[:2] == b"\x02\xff" and self.end_marker_raises:
             raise ConnectionError("link dropped (device rebooting)")
         if data[:2] == b"\x02\xff":
@@ -151,6 +157,12 @@ class FakeClient:
                 raise ConnectionError("disconnected")
             if self.after_marker == "bleak":
                 raise BleakError("Device disconnected")
+            if (
+                self.after_marker == "silent"
+            ):  # a rebooted sensor: no answers, the link counts as lost only after the supervision timeout
+                if self.link_drops_after is not None and time.monotonic() - self.marker_at >= self.link_drops_after:
+                    self.connected_flag = False
+                raise TimeoutError()
             if self.after_marker == "stall":  # no answer, the link stays up
                 raise TimeoutError()
             if self.after_marker == "stall_link_down":  # no answer, and the client says the link is gone

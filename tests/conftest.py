@@ -14,6 +14,9 @@ def no_grace(monkeypatch):
     """Don't wait after the end marker in tests."""
     monkeypatch.setattr("custom_components.pvvx_ota.ota.END_MARKER_GRACE", 0)
     monkeypatch.setattr("custom_components.pvvx_ota.ota.DELAYED_REREQUEST_AFTER", 0)  # no 2 s wait in tests
+    monkeypatch.setattr(
+        "custom_components.pvvx_ota.ota.STALL_WINDOW", 0.05
+    )  # a silent sensor with the link up is "unverified" fast
 
 
 @pytest.fixture(autouse=True)
