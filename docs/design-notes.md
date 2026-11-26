@@ -57,3 +57,6 @@ Some PIN sensors may still refuse the first protected write after a correct pair
 - The `70 01` reply itself was not captured (no notification subscription on that link); success was judged from the missing write error and from the sensor
   answering unencrypted afterwards. Battery was 83 % (above the ~40 % limit pvvx names for flash writes).
 - Not yet tried: setting the PIN again and then pairing on the clean table (the second half of the procedure).
+- Later tests on other sensors showed two weaknesses, now fixed in the package: a failed connect could leave the run hanging with the busy flag set (a
+  90 s watchdog now ends it with `timeout`), and `pin clear sent` was reported although the link had dropped before the write (esphome logged "Cannot
+  write to BLE characteristic - not connected"); it now needs the link to be open at the write, otherwise the result is `clear not sent`.

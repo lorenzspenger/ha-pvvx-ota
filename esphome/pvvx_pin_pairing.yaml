@@ -49,8 +49,9 @@ text_sensor:
     name: "pvvx pair result"
     icon: mdi:bluetooth-settings
     entity_category: diagnostic
-    # pvvx_clear_pin ends with "pin clear sent" (the command was written; the sensor reboots without a PIN when the link closes, which
-    # Home Assistant checks) or the results below.
+    # pvvx_clear_pin ends with "pin clear sent" (the command was written on a link that was still open; the sensor reboots without a PIN
+    # when the link closes, which Home Assistant checks), "clear not sent" (the link dropped before the write) or the results below.
+    # "timeout" means the run hung and the watchdog stopped it (the sensor was most likely not reachable).
     # "pairing" while it runs, then "passkey answered" (the sensor asked for the PIN and got it), "no passkey asked" (the pairer
     # reached the sensor but it never asked: it paired without a PIN prompt, Just Works, and the key it gives is refused) or
     # "no connection" (the sensor was not connectable; Home Assistant retries that).
@@ -83,6 +84,22 @@ ble_client:
             passkey: !lambda 'return id(pvvx_pin);'
 
 script:
+  # Watchdog: a run that hangs (a failed connect can leave pvvx_pairer_run stuck, and the busy flag then blocks every later call) is
+  # stopped after 90 s: the link is dropped, the PIN zeroed, the result set to "timeout" and the busy flag cleared. A normal run
+  # takes at most about 65 s and cancels it.
+  - id: pvvx_watchdog
+    mode: restart
+    then:
+      - delay: 90s
+      - script.stop: pvvx_pairer_run
+      - ble_client.disconnect: pvvx_pairer
+      - lambda: 'id(pvvx_pin) = 0;'
+      - text_sensor.template.publish:
+          id: pvvx_pair_result
+          state: "timeout"
+      - binary_sensor.template.publish:
+          id: pvvx_pairer_busy
+          state: OFF
   - id: pvvx_pairer_run
     mode: single
     parameters:
@@ -117,6 +134,7 @@ script:
             - binary_sensor.template.publish:
                 id: pvvx_pairer_busy
                 state: ON
+            - script.execute: pvvx_watchdog
             - ble_client.connect: pvvx_pairer
             # the hold counts from the link being open (opening can take 5 s or more), then pairing takes about 15 s
             - wait_until:
@@ -147,7 +165,8 @@ script:
                             characteristic_uuid: "00001f1f-0000-1000-8000-00805f9b34fb"
                             value: [0x70, 0x00, 0x00, 0x00, 0x00]
                         - delay: 3s
-                        - lambda: 'id(pvvx_clear_sent) = true;'
+                        # a write on a link that already dropped is not sent (esphome logs "not connected"), so only a still-open link counts
+                        - lambda: 'id(pvvx_clear_sent) = id(pvvx_pairer)->connected();'
                 else:
                   - delay: 20s
             - ble_client.disconnect: pvvx_pairer
@@ -158,7 +177,9 @@ script:
                 state: !lambda |-
                   if (!id(pvvx_pair_connected)) return "no connection";
                   if (!id(pvvx_pair_asked)) return "no passkey asked";
-                  return (clear && id(pvvx_clear_sent)) ? "pin clear sent" : "passkey answered";
+                  if (clear) return id(pvvx_clear_sent) ? "pin clear sent" : "clear not sent";
+                  return "passkey answered";
+            - script.stop: pvvx_watchdog
             - binary_sensor.template.publish:
                 id: pvvx_pairer_busy
                 state: OFF
