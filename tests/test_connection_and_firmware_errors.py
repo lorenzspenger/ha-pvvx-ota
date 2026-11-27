@@ -202,8 +202,8 @@ async def test_tx_power_and_smiley_selects_write_and_ignore_raw_values(
         tx = ent(hass, "select", "rf_tx_power")
         from custom_components.pvvx_ota.select import TxPowerSelect
 
-        await TxPowerSelect(hass, entry).async_select_option("raw 99")  # HA itself would reject the option
-        assert client.cfg_writes == []  # "raw N" only reports the current value
+        await TxPowerSelect(hass, entry).async_select_option("raw_99")  # HA itself would reject the option
+        assert client.cfg_writes == []  # "raw_N" only reports the current value
         sm = ent(hass, "select", "smiley")
         option = hass.states.get(sm).attributes["options"][1]
         await hass.services.async_call("select", "select_option", {"entity_id": sm, "option": option}, blocking=True)

@@ -110,7 +110,9 @@ DISPLAY_BY_HW: dict[int, frozenset[str]] = {
     12: _MJWSD05MMC_DISPLAY | {"date_ddmm"},  # MJWSD05MMC (en)
 }
 PROTECTED = frozenset({"adv_crypto"})  # a write without a matching bindkey would make the sensor unreadable by HA
-ADV_TYPES = ["ATC1441", "pvvx custom", "Mi", "BTHome"]
+# Select option ids (stable, lowercase; the shown texts live in the translations). The list index is the raw value.
+ADV_TYPES = ["atc1441", "pvvx", "mi", "bthome"]
+TEMP_UNITS = ["celsius", "fahrenheit"]
 LIMITS = {
     "adv_type": (0, 3),
     "adv_interval": (1, 160),
@@ -131,8 +133,19 @@ TX_POWER: dict[int, float] = {
     134: -15.88,
     130: -25.18,
 }
-SCREEN_TYPES = ["time", "temperature", "humidity", "battery %", "battery V", "external"]
-SMILEYS = ["off", "happy", "sad", "ooo", "frame off", "frame happy", "frame sad", "frame ooo"]
+SCREEN_TYPES = ["time", "temperature", "humidity", "battery_percent", "battery_voltage", "external"]
+SMILEYS = ["off", "happy", "sad", "ooo", "frame_off", "frame_happy", "frame_sad", "frame_ooo"]
+
+
+def tx_power_id(raw: int) -> str:
+    """Option id of a listed TX power: dbm_p3_01 for +3.01 dBm, dbm_m3_03 for -3.03 dBm."""
+    dbm = TX_POWER[raw]
+    return f"dbm_{'p' if dbm >= 0 else 'm'}{abs(dbm):.2f}".replace(".", "_")
+
+
+def raw_id(raw: int) -> str:
+    """Option id of a value the sensor reports but the integration does not list (shown as is, never selectable)."""
+    return f"raw_{raw}"
 
 
 def crosses_eep_boundary(old_ver: int | None, new_ver: int | None) -> bool:

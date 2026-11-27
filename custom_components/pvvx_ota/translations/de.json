@@ -324,19 +324,58 @@
     },
     "select": {
       "rf_tx_power": {
-        "name": "Sendeleistung"
+        "name": "Sendeleistung",
+        "state": {
+          "dbm_m25_18": "-25.18 dBm",
+          "dbm_m15_88": "-15.88 dBm",
+          "dbm_m9_89": "-9.89 dBm",
+          "dbm_m3_03": "-3.03 dBm",
+          "dbm_p0_04": "+0.04 dBm",
+          "dbm_p3_01": "+3.01 dBm",
+          "dbm_p5_13": "+5.13 dBm",
+          "dbm_p7_79": "+7.79 dBm",
+          "dbm_p10_46": "+10.46 dBm"
+        }
       },
       "temp_unit_display": {
-        "name": "Temperatureinheit im Display"
+        "name": "Temperatureinheit im Display",
+        "state": {
+          "celsius": "°C",
+          "fahrenheit": "°F"
+        }
       },
       "smiley": {
-        "name": "Smiley"
+        "name": "Smiley",
+        "state": {
+          "off": "Aus",
+          "happy": "Fröhlich",
+          "sad": "Traurig",
+          "ooo": "Ooo",
+          "frame_off": "Rahmen, aus",
+          "frame_happy": "Rahmen, fröhlich",
+          "frame_sad": "Rahmen, traurig",
+          "frame_ooo": "Rahmen, ooo"
+        }
       },
       "adv_type": {
-        "name": "Advertising-Typ"
+        "name": "Advertising-Typ",
+        "state": {
+          "atc1441": "ATC1441",
+          "pvvx": "pvvx (eigenes Format)",
+          "mi": "Mi",
+          "bthome": "BTHome"
+        }
       },
       "screen_type": {
-        "name": "Display-Anzeige"
+        "name": "Display-Anzeige",
+        "state": {
+          "time": "Uhrzeit",
+          "temperature": "Temperatur",
+          "humidity": "Luftfeuchte",
+          "battery_percent": "Batterie %",
+          "battery_voltage": "Batterie V",
+          "external": "Extern"
+        }
       }
     },
     "switch": {

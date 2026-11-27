@@ -268,8 +268,8 @@ async def test_entities_created_and_in_config_category(hass: HomeAssistant, enab
             assert reg.async_get(eid).entity_category == "config"
         assert hass.states.get(ent(hass, "number", "adv_interval")).state == "1.0"
         assert hass.states.get(ent(hass, "number", "measure_interval")).state == "4"
-        assert hass.states.get(ent(hass, "select", "smiley")).state == "frame happy"
-        assert hass.states.get(ent(hass, "select", "rf_tx_power")).state == "+0.04 dBm"
+        assert hass.states.get(ent(hass, "select", "smiley")).state == "frame_happy"
+        assert hass.states.get(ent(hass, "select", "rf_tx_power")).state == "dbm_p0_04"
         assert hass.states.get(ent(hass, "switch", "show_battery")).state == "on"
         assert hass.states.get(ent(hass, "switch", "screen_off")).state == "off"
         assert len(calls) == 1  # the version read at setup also fills the config: no extra connection
@@ -334,7 +334,7 @@ async def test_mjwsd05mmc_display_entities_read_and_write_their_bits(hass: HomeA
         await hass.services.async_call(
             "select",
             "select_option",
-            {"entity_id": ent(hass, "select", "screen_type"), "option": "battery V"},
+            {"entity_id": ent(hass, "select", "screen_type"), "option": "battery_voltage"},
             blocking=True,
         )
         assert client.cfg[3] == 0x64 and client.cfg[2] == 0xA3
@@ -396,7 +396,7 @@ async def test_changes_within_window_share_one_connection(hass: HomeAssistant, e
             hass.services.async_call(
                 "select",
                 "select_option",
-                {"entity_id": ent(hass, "select", "temp_unit_display"), "option": "°F"},
+                {"entity_id": ent(hass, "select", "temp_unit_display"), "option": "fahrenheit"},
                 blocking=True,
             ),
             hass.services.async_call(
@@ -589,13 +589,11 @@ async def test_adv_type_change_raises_repair_issue_and_clears(hass: HomeAssistan
     try:
         await enable(hass, ent(hass, "select", "adv_type"))
         eid = ent(hass, "select", "adv_type")
-        assert hass.states.get(eid).state == "BTHome"
-        await hass.services.async_call(
-            "select", "select_option", {"entity_id": eid, "option": "pvvx custom"}, blocking=True
-        )
+        assert hass.states.get(eid).state == "bthome"
+        await hass.services.async_call("select", "select_option", {"entity_id": eid, "option": "pvvx"}, blocking=True)
         assert cfg.get(client.cfg, "adv_type") == 1
         assert ir.async_get(hass).async_get_issue(DOMAIN, f"adv_type_changed_{entry.entry_id}")
-        await hass.services.async_call("select", "select_option", {"entity_id": eid, "option": "BTHome"}, blocking=True)
+        await hass.services.async_call("select", "select_option", {"entity_id": eid, "option": "bthome"}, blocking=True)
         assert ir.async_get(hass).async_get_issue(DOMAIN, f"adv_type_changed_{entry.entry_id}") is None
     finally:
         [c.stop() for c in ctx]

@@ -1,4 +1,4 @@
-"""Select entities: TX power, temperature unit, smiley, display content, advertising type."""
+"""Select entities (options are stable ids, the texts come from the translations): TX power, temperature unit, smiley, display content, advertising type."""
 
 from __future__ import annotations
 
@@ -11,9 +11,6 @@ from .entity import PvvxConfigEntity, wanted
 from .shared import PvvxConfigEntry
 
 PARALLEL_UPDATES = 1  # one Bluetooth operation at a time, like the shared lock
-
-
-UNITS = {"°C": 0, "°F": 1}
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: PvvxConfigEntry, add: AddConfigEntryEntitiesCallback) -> None:
@@ -32,42 +29,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: PvvxConfigEntry, add: Ad
     add(ents)
 
 
-def _dbm(raw: int) -> str:
-    return f"{cfgmod.TX_POWER[raw]:+.2f} dBm"
-
-
 class TxPowerSelect(PvvxConfigEntity, SelectEntity):
     field_key = "rf_tx_power"
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
         super().__init__(hass, entry, "rf_tx_power", enabled_default=False)
 
-    def _current_label(self) -> str | None:
+    def _current_id(self) -> str | None:
         v = self.store.value("rf_tx_power")
         if v is None:
             return None
-        return _dbm(v) if v in cfgmod.TX_POWER else f"raw {v}"  # keep a value we do not list instead of snapping it
+        return cfgmod.tx_power_id(v) if v in cfgmod.TX_POWER else cfgmod.raw_id(v)  # keep a value we do not list
 
     @property
     def options(self) -> list[str]:
-        opts = [_dbm(r) for r in sorted(cfgmod.TX_POWER, key=lambda r: cfgmod.TX_POWER[r])]
-        cur = self._current_label()
+        opts = [cfgmod.tx_power_id(r) for r in sorted(cfgmod.TX_POWER, key=lambda r: cfgmod.TX_POWER[r])]
+        cur = self._current_id()
         return opts + [cur] if cur and cur not in opts else opts
 
     @property
     def current_option(self) -> str | None:
-        return self._current_label()
+        return self._current_id()
 
     async def async_select_option(self, option: str) -> None:
-        by_label = {_dbm(r): r for r in cfgmod.TX_POWER}
-        if option not in by_label:
-            return  # the "raw N" entry only reports the current value
-        await self.store.async_request({"rf_tx_power": by_label[option]})
+        by_id = {cfgmod.tx_power_id(r): r for r in cfgmod.TX_POWER}
+        if option not in by_id:
+            return  # a raw_N entry only reports the current value
+        await self.store.async_request({"rf_tx_power": by_id[option]})
 
 
 class UnitSelect(PvvxConfigEntity, SelectEntity):
     field_key = "temp_f"
-    _attr_options = list(UNITS)
+    _attr_options = cfgmod.TEMP_UNITS
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
         super().__init__(hass, entry, "temp_unit_display", enabled_default=False)
@@ -75,10 +68,10 @@ class UnitSelect(PvvxConfigEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         v = self.store.value("temp_f")
-        return None if v is None else "°F" if v else "°C"
+        return None if v is None else cfgmod.TEMP_UNITS[1 if v else 0]
 
     async def async_select_option(self, option: str) -> None:
-        await self.store.async_request({"temp_f": UNITS[option]})
+        await self.store.async_request({"temp_f": cfgmod.TEMP_UNITS.index(option)})
 
 
 class SmileySelect(PvvxConfigEntity, SelectEntity):
@@ -106,19 +99,19 @@ class ScreenTypeSelect(PvvxConfigEntity, SelectEntity):
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
         super().__init__(hass, entry, "screen_type", enabled_default=False)
 
-    def _current_label(self) -> str | None:
+    def _current_id(self) -> str | None:
         v = self.store.value("screen_type")
-        return None if v is None else cfgmod.SCREEN_TYPES[v] if v < len(cfgmod.SCREEN_TYPES) else f"raw {v}"
+        return None if v is None else cfgmod.SCREEN_TYPES[v] if v < len(cfgmod.SCREEN_TYPES) else cfgmod.raw_id(v)
 
     @property
     def options(self) -> list[str]:
         opts = cfgmod.SCREEN_TYPES[:-1]
-        cur = self._current_label()
+        cur = self._current_id()
         return opts + [cur] if cur and cur not in opts else opts
 
     @property
     def current_option(self) -> str | None:
-        return self._current_label()
+        return self._current_id()
 
     async def async_select_option(self, option: str) -> None:
         if option in cfgmod.SCREEN_TYPES[:-1]:

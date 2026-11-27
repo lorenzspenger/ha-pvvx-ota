@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Breaking for automations that use the old select option text:** the five select entities now use stable option ids and show translated texts. Advertising type: `ATC1441`, `pvvx custom`, `Mi`, `BTHome` -> `atc1441`, `pvvx`, `mi`, `bthome`. Temperature unit: `°C`, `°F` -> `celsius`, `fahrenheit`. Smiley: `frame off` ... `frame ooo` -> `frame_off`, `frame_happy`, `frame_sad`, `frame_ooo` (`off`, `happy`, `sad`, `ooo` unchanged). Display content: `battery %`, `battery V` -> `battery_percent`, `battery_voltage` (others unchanged). TX power: `+3.01 dBm` -> `dbm_p3_01`, `-3.03 dBm` -> `dbm_m3_03` (same pattern for every level). An unlisted value: `raw N` -> `raw_N`.
+
 ## 0.25.0-beta.6
 
 Git tag `v0.25.0-beta.6`, manifest version `0.25.0b6`.
