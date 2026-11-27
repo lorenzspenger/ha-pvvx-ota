@@ -381,3 +381,44 @@ async def test_old_notifications_are_dismissed_at_setup(hass: HomeAssistant, ena
         assert nid not in hass.data["persistent_notification"]
     finally:
         [c.stop() for c in ctx]
+
+
+async def reloaded_registry(hass: HomeAssistant, hass_storage) -> ir.IssueRegistry:
+    """What Home Assistant has after a restart: a fresh registry loaded from the saved data."""
+    hass_storage[ir.STORAGE_KEY] = {
+        "version": ir.STORAGE_VERSION_MAJOR,
+        "minor_version": ir.STORAGE_VERSION_MINOR,
+        "key": ir.STORAGE_KEY,
+        "data": ir.async_get(hass)._data_to_save(),
+    }
+    fresh = ir.IssueRegistry(hass)
+    await fresh.async_load()
+    return fresh
+
+
+async def test_issues_are_active_again_after_a_restart(hass: HomeAssistant, enable_bluetooth, fast_batch, hass_storage):
+    entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=SAMPLE))
+    try:
+        entry.runtime_data._issue("encryption_changed")
+        entry.runtime_data.flash_failed("boom")
+        fresh = await reloaded_registry(hass, hass_storage)
+        for issue_id in (f"encryption_changed_{entry.entry_id}", f"flash_failed_{entry.runtime_data.address}"):
+            loaded = fresh.async_get_issue(DOMAIN, issue_id)
+            assert loaded is not None and loaded.active
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_an_inactive_leftover_encryption_issue_is_not_watched(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    sensor = bthome_sensor(hass)
+    hass.states.async_set(sensor, "unavailable")
+    entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=SAMPLE))
+    try:
+        entry.runtime_data._issue("encryption_changed")
+        found = issue(hass, entry, "encryption_changed")
+        assert found is not None
+        object.__setattr__(found, "active", False)  # what a non-persistent issue of an older version loads as
+        entry.runtime_data.async_watch_bthome()
+        assert entry.runtime_data._unwatch is None
+    finally:
+        [c.stop() for c in ctx]

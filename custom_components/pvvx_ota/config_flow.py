@@ -305,6 +305,7 @@ class PvvxOtaConfigFlow(ConfigFlow, domain=DOMAIN):
                 DOMAIN,
                 f"pin_pairing_failed_{address}",
                 is_fixable=False,
+                is_persistent=True,
                 severity=ir.IssueSeverity.WARNING,
                 translation_key="pin_pairing_failed",
                 translation_placeholders={"name": entry_title, "address": address, "flasher_url": FLASHER_URL},

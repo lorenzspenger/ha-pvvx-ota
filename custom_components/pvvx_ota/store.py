@@ -469,6 +469,7 @@ class ConfigStore:
             f"{key}_{self.entry.entry_id}",
             data={"entry_id": self.entry.entry_id},
             is_fixable=fixable,
+            is_persistent=True,
             severity=ir.IssueSeverity.WARNING,
             translation_key=key,
             translation_placeholders={"name": self.name},
@@ -481,6 +482,7 @@ class ConfigStore:
             DOMAIN,
             f"flash_failed_{self.address}",
             is_fixable=False,
+            is_persistent=True,
             severity=ir.IssueSeverity.WARNING,
             translation_key="flash_failed",
             translation_placeholders={"name": self.name, "error": err},
@@ -500,7 +502,8 @@ class ConfigStore:
 
     # -- encryption_changed: cleared by the first BTHome reading afterwards ------------------
     def _encryption_issue_open(self) -> bool:
-        return ir.async_get(self.hass).async_get_issue(DOMAIN, f"encryption_changed_{self.entry.entry_id}") is not None
+        found = ir.async_get(self.hass).async_get_issue(DOMAIN, f"encryption_changed_{self.entry.entry_id}")
+        return found is not None and found.active
 
     @callback
     def async_watch_bthome(self) -> None:

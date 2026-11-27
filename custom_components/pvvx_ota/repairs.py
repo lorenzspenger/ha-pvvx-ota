@@ -42,7 +42,8 @@ class RestoreSettingsRepairFlow(RepairsFlow):
             except HomeAssistantError:
                 errors["base"] = "restore_failed"
             else:
-                if ir.async_get(self.hass).async_get_issue(DOMAIN, self.issue_id) is None:
+                remaining = ir.async_get(self.hass).async_get_issue(DOMAIN, self.issue_id)
+                if remaining is None or not remaining.active:
                     return self.async_create_entry(data={})
                 errors["base"] = "restore_failed"  # written, but the sensor still differs from the saved settings
         schema: Any = vol.Schema({})  # voluptuous, which Home Assistant still accepts
