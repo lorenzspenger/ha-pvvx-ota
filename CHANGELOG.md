@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.25.0-beta.6
 
-- **The sensor's clock is now also checked in the update entity's periodic version read** (and in the check after a flash), so sensors with only the default entities no longer drift.
+Git tag `v0.25.0-beta.6`, manifest version `0.25.0b6`.
+
+- **The sensor's clock is also set in the periodic version read** and in the check after a flash.
 - **A failed or unconfirmed flash is logged as a warning** by the integration.
 
 ## 0.25.0-beta.5
