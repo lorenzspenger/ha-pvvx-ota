@@ -67,6 +67,7 @@ from .ota import (
     parse_cfg,
     parse_version,
     read_cfg_raw,
+    version_of_filename,
 )
 from .registry import attach_to_device, find_bthome_device
 from .shared import PvvxConfigEntry, get_shared
@@ -603,6 +604,7 @@ class PvvxUpdateEntity(UpdateEntity):
         assert shared.source is not None
         async with self._firmware_slot(shared):
             record: dict[str, Any] = {"started": dt_util.utcnow().isoformat(), "result": "failed before the transfer"}
+            keep_carry = False  # the carried key stays for the post-flash check (the image went over, or may have)
             expected: int | None = None  # the version byte this flash should leave on the sensor (None: a local file)
             notice = self._weak_signal_notice()
             if notice:
@@ -641,6 +643,10 @@ class PvvxUpdateEntity(UpdateEntity):
                             assert catalog is not None
                             check_local_image(local, filename, catalog.board_for(hw))  # raises for unknown hardware ids
                         fw = local
+                    # a flash across the 5.7/5.8 EEPROM rewrite erases the bindkey: read it now (memory only) if it is on
+                    await self._store_cfg.prepare_carry(
+                        client, raw, target.version if local is None else version_of_filename(filename or "")
+                    )
                     self._attr_update_percentage = 0
                     self._attr_in_progress = True
                     shared.flashing = True  # no configuration writes while the image is going over
@@ -667,6 +673,7 @@ class PvvxUpdateEntity(UpdateEntity):
                         stats, result="ok", blocks_per_s=round(stats["blocks"] / max(stats["seconds"], 0.1), 1)
                     )
                     _LOGGER.info("%s: flash finished in %.0f s", self._name, stats["seconds"])
+                    keep_carry = True
             except OtaError as err:
                 text = f"{err} ({notice})" if notice else str(err)
                 unverified = isinstance(err, OtaUnverified)
@@ -675,11 +682,14 @@ class PvvxUpdateEntity(UpdateEntity):
                     text
                 )  # stays until a later flash, or the version check below, shows the new version
                 if unverified:
+                    keep_carry = True
                     # the image may have been applied: read the version back like after a normal flash
                     self._quiet_until = asyncio.get_running_loop().time() + POST_FLASH_QUIET
                     self._schedule_verify(expected, unverified=True)
                 raise ha_error("flash_failed", name=self._name, error=text) from err
             finally:
+                if not keep_carry:
+                    self._store_cfg.clear_carry()
                 self._store_cfg.last_flash = record
                 shared.flashing = False
                 self._store_cfg.async_notify()
@@ -714,6 +724,12 @@ class PvvxUpdateEntity(UpdateEntity):
         ``unverified``: the flash ended without a clear result (the link stalled after the end marker). Reading the expected
         version then clears the failure issue; if the version cannot be read at all a repair issue says the flash may not
         have been applied."""
+        try:
+            await self._async_verify_loop(expected, unverified)
+        finally:
+            self._store_cfg.clear_carry()  # the carried key (if any) never outlives the check
+
+    async def _async_verify_loop(self, expected: int | None, unverified: bool) -> None:
         for attempt in range(POST_FLASH_ATTEMPTS):
             try:
                 await self._async_read_device()

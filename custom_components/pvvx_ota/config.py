@@ -32,10 +32,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 CMD_CFG = 0x55
-# Firmware versions whose layout was compared (docs/version-layouts.md): 4.2 .. 5.5 (every tag) and 5.7 .. 5.9. 4.1 and older are
-# refused (flg2 bits differ, the reply can be stale), 5.6 only existed as beta commits and was not compared.
+# Firmware versions whose layout was compared (docs/version-layouts.md): 4.2 .. 5.9 (5.6 only as beta commits, all nine compared).
+# 4.1 and older are refused (flg2 bits differ, the reply can be stale).
 VERIFIED_VERSIONS = frozenset(
-    {0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x57, 0x58, 0x59}
+    {0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59}
+)
+EEP_V2_VERSION = (
+    0x58  # first firmware with the rewritten EEPROM format: a flash across it erases everything stored on the sensor
 )
 # Fields that do not exist (the bit is reserved or unused by every display driver) below a version: (first version with it, keys)
 VERSION_EXCLUDED: tuple[tuple[int, frozenset[str]], ...] = (
@@ -130,6 +133,13 @@ TX_POWER: dict[int, float] = {
 }
 SCREEN_TYPES = ["time", "temperature", "humidity", "battery %", "battery V", "external"]
 SMILEYS = ["off", "happy", "sad", "ooo", "frame off", "frame happy", "frame sad", "frame ooo"]
+
+
+def crosses_eep_boundary(old_ver: int | None, new_ver: int | None) -> bool:
+    """True when a flash goes from one side of the 5.7/5.8 EEPROM rewrite to the other (either direction; both versions known)."""
+    if old_ver is None or new_ver is None:
+        return False
+    return (old_ver < EEP_V2_VERSION) != (new_ver < EEP_V2_VERSION)
 
 
 def version_of(raw: bytes) -> int | None:

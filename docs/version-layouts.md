@@ -19,9 +19,9 @@ Example board: hardware id 7 = CGG1-M 2022 (`DEVICE_CGG1` = 7, app_config.h:19-2
 
 TelinkMiFlasher: the page is not versioned per release (display-layouts.md); it treats every fw >= 4.8 the same (`hwver_id` is the raw `hw_ver` byte), so no 5.5-specific branch exists for these fields.
 
-Decision: 0x55 added to `VERIFIED_VERSIONS`; no per-version capability exclusion needed. 0x56 stays unverified (see the 5.6 section). Not verified on hardware yet: a real V5.5 sensor has only been read, never written.
+Decision: 0x55 added to `VERIFIED_VERSIONS`; no per-version capability exclusion needed. 0x56 is verified too (see the 5.6 section). Not verified on hardware yet: a real V5.5 sensor has only been read, never written.
 
-## 5.6 (0x56): config layout identical to 5.5, but NOT added to `VERIFIED_VERSIONS`: the bindkey does not survive a flash to 5.8/5.9
+## 5.6 (0x56): config layout identical to 5.5, in `VERIFIED_VERSIONS`; the bindkey does not survive a flash to 5.8/5.9
 
 Compared 2026-11-27 (read-only, nothing written to a sensor). 5.6 has no tag. Nine commits have `#define VERSION 0x56` (src/app_config.h:9), found by checking `app_config.h` at every commit between `v5.5` and `8e8b90c` (5.7): `c6b5e43` (2025-12-03, "start v5.6 beta"), `1394c2e` (12-06), `57b03a8` (12-09), `418dfed` and `7af7dd3` (2026-01-05), `32a99d9` (01-16), `2564ccf` (01-22), `e531ea7` (01-24), `e65881a` (01-31). `9ab5561` (2026-02-11) already has 0x57.
 
@@ -46,7 +46,7 @@ Found 2026-11-27 after a real sensor went from a 5.6 beta build to 5.9 with BTHo
 - The same break exists for 5.5 -> 5.8/5.9 and 5.7 -> 5.8/5.9 (already in `VERIFIED_VERSIONS`), and for a downgrade 5.8/5.9 -> 5.7 or older (the old code does not find its records either; `flash_supported_eep_ver` erases when the stored value is below the minimum or missing).
 - The integration's assumption "a flash clears the encryption flag but the key stays on the sensor" (store.py `_restore_encryption`, `require_stored_key`) is therefore wrong across the 5.7/5.8 boundary. Needed before 0x56 can be added: after a flash whose source is < 5.8 and target >= 5.8 (or the reverse), do not use `keep_key`; either write the key again (it is not kept by design) or tell the user the key is new and has to be entered in the BTHome entry, and restore the snapshot settings (they were reset to defaults too).
 
-Decision: 0x56 NOT added to `VERIFIED_VERSIONS`. Everything else compared above is identical to 5.5, so adding it needs only the cross-boundary handling described.
+Decision: 0x56 added to `VERIFIED_VERSIONS` (2026-11-27) together with the cross-boundary handling: the integration reads the key before a flash across 5.7/5.8 (only if encryption is on), keeps it in memory, writes it back after the version check and writes the snapshot settings back; if that fails it raises the `encryption_key_replaced` repair issue. PIN and sensor coefficients are not carried over.
 
 ---
 
@@ -76,7 +76,7 @@ Display boards per version: hw ids come from the sensor, so a board only appears
 
 ## What the code does with this (v0.18.0)
 
-- `VERIFIED_VERSIONS` = 4.2 .. 5.5 (every tag), 5.7, 5.8, 5.9. Refused: 4.1 and older (group c), 5.6 (only beta commits, handlers not compared), anything newer than 5.9.
+- `VERIFIED_VERSIONS` = 4.2 .. 5.5 (every tag), 5.6 (beta commits, compared), 5.7, 5.8, 5.9. Refused: 4.1 and older (group c), anything newer than 5.9.
 - `config.VERSION_EXCLUDED`: `screen_off` below 4.3, `not_day_of_week` below 4.9, `date_ddmm` below 5.4. Everything else uses the same bytes and bits in all of 4.2 .. 5.9 (display flag uses compared per board file, see above). The hardware id was already decoded per version in `ota.parse_cfg` (low nibble below 4.8).
 - Bytes 4-5 are never touched: read-modify-write writes the freshly read block back, so the in-block temperature/humidity offsets of 4.2 .. 4.6 are preserved. They are not offered as entities (verified in sensors.c:203-207 `cfg.temp_offset * 10`, s8 in 0.1 units, but there is no entity for them yet).
 - Calibration (command 0x25, factory tables identical at every tag 4.9 .. 5.5, 4.8 lacks only the CHT8215 table) is only read and offered from 4.8 (`calib.MIN_VERSION`); 4.7 replies with 17 bytes and no chip type, older versions do not know the command.

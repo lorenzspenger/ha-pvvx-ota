@@ -136,8 +136,8 @@ async def test_reboot_and_flash_connections_sync_too(hass: HomeAssistant, enable
 
 async def test_unverified_firmware_gets_no_clock_writes(hass: HomeAssistant, enable_bluetooth, freezer):
     await berlin(hass, freezer)
-    old = FakeClient(cfg=bytes([0x55, 0x56]) + SAMPLE[2:])
-    entry, calls, ctx = await setup_cfg_entry(hass, old, version=0x56)
+    old = FakeClient(cfg=bytes([0x55, 0x5A]) + SAMPLE[2:])
+    entry, calls, ctx = await setup_cfg_entry(hass, old, version=0x5A)
     try:
         assert old.time_writes == []
     finally:

@@ -179,6 +179,12 @@ def board_of_filename(name: str) -> str | None:
     return m[1] if m else None
 
 
+def version_of_filename(name: str) -> int | None:
+    """'bin/MHO_C401_v59.bin' -> 0x59; None if the name does not carry a two digit version."""
+    m = re.fullmatch(r"(?:.*/)?[A-Za-z0-9_-]+?_v([0-9a-fA-F]{2})\.bin", name)
+    return int(m[1], 16) if m else None
+
+
 async def read_cfg(client: GattClient, timeout: float = CFG_TIMEOUT) -> tuple[int | None, int | None]:
     """Query version and hardware id (see read_cfg_raw)."""
     return parse_cfg(await read_cfg_raw(client, timeout))

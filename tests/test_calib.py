@@ -131,8 +131,10 @@ async def test_offset_not_offered_for_unknown_chip_or_unverified_firmware(hass: 
 
 
 async def test_no_offsets_on_unverified_firmware(hass: HomeAssistant, enable_bluetooth):
-    old = FakeClient(cfg=bytes([0x55, 0x56]) + SAMPLE[2:])  # 5.6: layout not verified, so the coefficients are not read
-    entry, calls, ctx = await setup_cfg_entry(hass, old, version=0x56)
+    old = FakeClient(
+        cfg=bytes([0x55, 0x5A]) + SAMPLE[2:]
+    )  # 5.10: layout not verified, so the coefficients are not read
+    entry, calls, ctx = await setup_cfg_entry(hass, old, version=0x5A)
     try:
         assert ent(hass, "number", "temp_offset") is None
         assert entry.runtime_data.calib is None

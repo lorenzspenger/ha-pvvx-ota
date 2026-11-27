@@ -29,6 +29,7 @@ _LOGGER = logging.getLogger(__name__)
 ISSUE_KEYS = (
     "adv_type_changed",
     "encryption_changed",
+    "encryption_key_replaced",
     "encryption_restore_failed",
     "flash_unconfirmed",
     "pin_bond_lost",

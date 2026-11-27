@@ -200,6 +200,9 @@
     "keep_key_with_key": {
       "message": "Schlüssel behalten und ein Schlüssel schließen sich aus: lass das Schlüsselfeld leer, wenn der Sensor seinen Schlüssel behalten soll."
     },
+    "keep_key_after_key_replaced": {
+      "message": "Das Update hat den Verschlüsselungsschlüssel des Sensors ersetzt, der Schlüssel auf dem Sensor ist also nicht der im BTHome-Eintrag. Gib den alten Schlüssel im Feld key an oder lass es leer, um einen neuen zu erzeugen."
+    },
     "key_not_accepted": {
       "message": "{name}: Der Sensor hat den Schlüssel nicht angenommen. Dieses Board unterstützt vielleicht keine verschlüsselten Advertisements."
     },
@@ -262,6 +265,10 @@
           "cannot_restore": "Es gibt keine gespeicherten Einstellungen zum Wiederherstellen, oder der Sensor ist gerade nicht eingerichtet."
         }
       }
+    },
+    "encryption_key_replaced": {
+      "title": "{name}: Das Update hat den Verschlüsselungsschlüssel ersetzt",
+      "description": "Das Firmware-Update hat alles gelöscht, was der Sensor gespeichert hatte (Firmware 5.8 hat das Speicherformat geändert), auch den Verschlüsselungsschlüssel, und der Schlüssel konnte nicht übernommen werden. Die Verschlüsselung ist aus und der Sensor hat einen neuen zufälligen Schlüssel. Damit der BTHome-Eintrag weiter funktioniert, führe die Aktion pvvx_ota.set_encryption mit Aktivieren und deinem alten Schlüssel im Feld key aus (Entwicklerwerkzeuge > Aktionen). Ohne Schlüssel erzeugt die Aktion einen neuen, den du dann im BTHome-Eintrag eingibst. Der Hinweis verschwindet, sobald set_encryption die Verschlüsselung eingeschaltet hat."
     },
     "encryption_restore_failed": {
       "title": "{name}: Verschlüsselung wurde nicht wieder eingeschaltet",

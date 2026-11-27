@@ -6,8 +6,8 @@ The integration works with **Telink-based thermometers that already run pvvx cus
 
 ## Firmware versions
 
-* **Full support (update entity and settings)**: 4.2 to 5.5 (every tag), 5.7, 5.8 and 5.9. The settings layout of these versions was compared with pvvx's sources ([version-layouts.md](version-layouts.md)).
-* **Update entity only**: 4.1 and older, 5.6 (beta commits only) and anything newer than 5.9. No settings entities, and the configuration block is never written.
+* **Full support (update entity and settings)**: 4.2 to 5.9 (every tag, 5.6 only as beta commits). The settings layout of these versions was compared with pvvx's sources ([version-layouts.md](version-layouts.md)).
+* **Update entity only**: 4.1 and older and anything newer than 5.9. No settings entities, and the configuration block is never written.
 
 ## Boards
 

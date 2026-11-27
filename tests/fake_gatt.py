@@ -1,6 +1,7 @@
 """Fake GATT client emulating the pvvx OTA characteristic."""
 
 import asyncio
+import secrets
 import struct
 import time
 
@@ -45,6 +46,10 @@ class FakeClient:
         self.reboots = 0
         self.no_reboot_reply = False
         self.default_cfg: bytes | None = None
+        self.flash_to: int | None = None  # version byte the sensor reports after the end marker (None: unchanged)
+        self.eep_defaults: bytes | None = None  # config bytes after the version byte once a flash erased the EEPROM
+        self.key_echo_wrong = False  # a 0x18 write is answered with another key
+        self.key_reads = 0
         self.clamp = lambda b: b  # emulate the firmware's test_config() clamping
         self.cfg = cfg if cfg is not None else bytes([0x55, 0x59, 0, 0, 0, 0, 10, 4, 0x8B, 0, 55, 0])
         self.fail_status_at = fail_status_at
@@ -94,10 +99,11 @@ class FakeClient:
                 if len(data) == 17:
                     self.bindkey = bytes(data[1:])
                     self.key_writes += 1
-                    self._cb(char, bytearray(b"\x18" + self.bindkey))
+                    self._cb(char, bytearray(b"\x18" + (bytes(16) if self.key_echo_wrong else self.bindkey)))
                 elif self.bindkey in (bytes(16), b"\xff" * 16):
                     self._cb(char, bytearray([0x18, 0xFF]))  # no key in the EEPROM
                 else:
+                    self.key_reads += 1
                     self._cb(char, bytearray(b"\x18" + self.bindkey))
                 return
             if data[:1] == b"\x70":  # set PIN (u32 LE); reply 1 = stored, 3 = failed
@@ -144,12 +150,28 @@ class FakeClient:
         if data[:2] == b"\x02\xff":
             self.marker_sent = True
             self.marker_at = time.monotonic()
+            self._apply_flash()
         if data[:2] == b"\x02\xff" and self.end_marker_raises:
             raise ConnectionError("link dropped (device rebooting)")
         if data[:2] == b"\x02\xff":
             self.marker_sent = True
         self.writes.append(bytes(data))
         self.responses.append(response)
+
+    def _apply_flash(self) -> None:
+        """The new image starts: the encryption flag is off after any flash; across the 5.7/5.8 EEPROM rewrite the whole
+        config goes back to ``eep_defaults`` and the sensor makes up a new random bindkey."""
+        if self.flash_to is None:
+            return
+        old = self.cfg[1]
+        if (old < 0x58) != (self.flash_to < 0x58):
+            body = self.eep_defaults if self.eep_defaults is not None else self.cfg[2:]
+            self.bindkey = secrets.token_bytes(16)
+        else:
+            body = self.cfg[2:]
+        body = bytearray(body)
+        body[1] &= ~0x08 & 0xFF  # flg2 bit 3: adv_crypto
+        self.cfg = bytes([0x55, self.flash_to]) + bytes(body)
 
     async def read_gatt_char(self, char):
         if self.marker_sent:

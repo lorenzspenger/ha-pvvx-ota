@@ -13,8 +13,9 @@ from typing import Any
 
 from bleak_retry_connector import BleakClientWithServiceCache
 from homeassistant.components import bluetooth
+from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_ADDRESS, STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.const import CONF_ADDRESS, STATE_UNAVAILABLE, STATE_UNKNOWN, EntityCategory
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
@@ -52,12 +53,14 @@ CALIB_TIMEOUT = 5.0
 BATCH_WINDOW = 2.0  # seconds: changes arriving within this window share one connection
 
 
-async def require_stored_key(client: BleakClientWithServiceCache) -> None:
+async def require_stored_key(client: BleakClientWithServiceCache) -> bytes:
     """Read-only check (command 0x18 alone) that the sensor still holds a key; a missing one answers 0xff or zeros.
-    The key itself is never kept, returned or logged."""
+    Returns the key for the one caller that carries it over a flash across the EEPROM rewrite (``ConfigStore.prepare_carry``);
+    everybody else drops it. It is never logged."""
     reply = await send_command(client, b"\x18", 0x18, log=False)
     if len(reply) < 17 or set(reply[1:17]) <= {0, 0xFF}:
         raise ha_error("encryption_key_gone")
+    return bytes(reply[1:17])
 
 
 class ConfigStore:
@@ -84,6 +87,9 @@ class ConfigStore:
         self.quiet_until = 0.0  # event-loop time until which nothing else should connect (sensor is rebooting)
         self._unwatch: Callable[[], None] | None = None  # BTHome readings watched while encryption_changed is open
         self.first_read: asyncio.Task[None] | None = None  # the background first read of this setup (tests await it)
+        # the bindkey read before a flash across the 5.7/5.8 EEPROM rewrite: in memory only, for this flash, never stored
+        self._carry_key: bytes | None = None
+        self._carry_active = False  # a flash that may cross the boundary is under way (the key may still be None)
 
     # -- state ---------------------------------------------------------
     @property
@@ -119,6 +125,8 @@ class ConfigStore:
         raw = self.raw
         if not snap or not snap.get("crypto") or raw is None or not cfgmod.is_verified(raw):
             return False
+        if self._issue_open("encryption_key_replaced"):
+            return False  # the key on the sensor is not the one BTHome has: the flag alone must not be switched on
         return self.available and cfgmod.get(raw, "adv_crypto") == 0
 
     def _fields_differ(self) -> bool:
@@ -164,11 +172,31 @@ class ConfigStore:
             self._clear_issue("pin_set")  # the read worked without a PIN: it was removed elsewhere
         self._clear_fixed_issues(raw)
         ver, hw = parse_cfg(raw)
+        self._check_stranded_carry(raw)
         if ver is not None and (self.entry.data.get(CONF_VERSION), self.entry.data.get(CONF_HW_ID)) != (ver, hw):
             self.hass.config_entries.async_update_entry(
                 self.entry, data={**self.entry.data, CONF_VERSION: ver, CONF_HW_ID: hw}
             )
         self.async_notify()
+
+    def _check_stranded_carry(self, raw: bytes) -> None:
+        """A flash across the EEPROM rewrite was started with encryption on, but nobody carries the key any more (Home Assistant
+        restarted before the version check): the sensor now holds a new key and has encryption off."""
+        snap = self.snapshot
+        if not snap or not snap.get("pending_key") or self._carry_active or get_shared(self.hass).flashing:
+            return
+        if not cfgmod.crosses_eep_boundary(snap.get("version"), cfgmod.version_of(raw)):
+            return
+        self._drop_pending()
+        if cfgmod.is_verified(raw) and cfgmod.get(raw, "adv_crypto") == 0:
+            _LOGGER.warning("%s: the flash replaced the encryption key and it could not be carried over", self.name)
+            self._issue("encryption_key_replaced")
+
+    def _drop_pending(self) -> None:
+        snap = self.snapshot
+        if snap and snap.get("pending_key"):
+            rest = {k: v for k, v in snap.items() if k != "pending_key"}
+            self.hass.config_entries.async_update_entry(self.entry, data={**self.entry.data, CONF_SNAPSHOT: rest})
 
     def _clear_fixed_issues(self, raw: bytes) -> None:
         """Issues whose cause a read shows to be gone, however it was fixed (here or with another tool)."""
@@ -203,6 +231,41 @@ class ConfigStore:
         }
         self.hass.config_entries.async_update_entry(self.entry, data={**self.entry.data, CONF_SNAPSHOT: snap})
         _LOGGER.debug("%s: settings snapshot taken: %s", self.name, snap)
+
+    async def prepare_carry(self, client: Any, raw: bytes, target: int | None) -> None:
+        """In the connection of a flash, after the snapshot: if the flash crosses the 5.7/5.8 EEPROM rewrite (``target`` None: the
+        new version is unknown, so it may) and encryption is on, read the key now, because the new firmware starts with a new
+        random one. It only lives in memory until the post-flash check has written it back."""
+        self.clear_carry()
+        old = cfgmod.version_of(raw)
+        if target is not None and not cfgmod.crosses_eep_boundary(old, target):
+            return
+        if target is None:
+            _LOGGER.info(
+                "%s: the flash may cross the EEPROM rewrite of firmware 5.8, settings and key are carried over",
+                self.name,
+            )
+        else:
+            _LOGGER.info(
+                "%s: this flash crosses the EEPROM rewrite of firmware 5.8, settings and encryption key are carried over",
+                self.name,
+            )
+        if not cfgmod.is_verified(raw) or cfgmod.get(raw, "adv_crypto") != 1:
+            return
+        self._carry_active = True
+        snap = self.snapshot
+        if snap:
+            self.hass.config_entries.async_update_entry(
+                self.entry, data={**self.entry.data, CONF_SNAPSHOT: {**snap, "pending_key": True}}
+            )
+        try:
+            self._carry_key = await require_stored_key(client)
+        except HomeAssistantError, OtaError:
+            _LOGGER.warning("%s: the encryption key could not be read before the flash", self.name)
+
+    def clear_carry(self) -> None:
+        self._carry_key = None
+        self._carry_active = False
 
     async def _read_calib(self, client: Any, raw: bytes) -> None:
         """Read the sensor coefficients in the connection we have anyway (non-fatal: older firmware lacks them)."""
@@ -424,9 +487,63 @@ class ConfigStore:
         snap = self.snapshot
         if not snap:
             return
-        if self.entry.options.get(CONF_AUTO_RESTORE_ENCRYPTION, True):
-            await self._restore_encryption(snap)
+        try:
+            if cfgmod.crosses_eep_boundary(snap.get("version"), cfgmod.version_of(self.raw or b"")):
+                await self._carry_over(snap)  # the flag alone would use the new random key: never the flag-only restore
+                return
+            if self.entry.options.get(CONF_AUTO_RESTORE_ENCRYPTION, True):
+                await self._restore_encryption(snap)
+            self._update_settings_issue()
+        finally:
+            self.clear_carry()
+            self._drop_pending()
+
+    async def _carry_over(self, snap: dict[str, Any]) -> None:
+        """After a flash across the 5.7/5.8 EEPROM rewrite the sensor starts with defaults and a new random key: write the key
+        and the settings back. Without the key (not read, or lost with a restart) encryption stays off and a repair issue says so."""
+        if snap.get("crypto") and cfgmod.get(self.raw or b"", "adv_crypto") == 0:
+            key, self._carry_key = self._carry_key, None
+            if (
+                key is not None
+                and self.entry.options.get(CONF_AUTO_RESTORE_ENCRYPTION, True)
+                and await self._write_back_key(key)
+            ):
+                self._clear_issue("encryption_key_replaced")
+                _LOGGER.info("%s: BTHome encryption and its key carried over the firmware flash", self.name)
+            else:
+                _LOGGER.warning("%s: the flash replaced the encryption key and it was not carried over", self.name)
+                self._issue("encryption_key_replaced")
+        changes = {k: v for k, v in self._restorable(snap).items() if self.value(k) != v}
+        if changes:
+            try:
+                await self.async_request(changes)
+            except HomeAssistantError as err:
+                _LOGGER.warning("%s: settings could not be carried over the flash: %s", self.name, err)
+        if self._matches_snapshot(self.raw):
+            self._clear_issue("reset_defaults")
         self._update_settings_issue()
+
+    async def _write_back_key(self, key: bytes) -> bool:
+        """Write the carried key to the sensor, check its echo, switch encryption on and check that. Never raises, never logs the key."""
+        try:
+            async with self._session() as client:
+                raw = await read_cfg_raw(client)
+                reply = await send_command(client, b"\x18" + key, 0x18, log=False)
+                if bytes(reply[1:17]) != key:
+                    raise ha_error("key_not_accepted", name=self.name)
+                if cfgmod.get(raw, "adv_crypto"):
+                    echoed = raw
+                else:
+                    payload = cfgmod.apply(raw, {"adv_crypto": 1}, parse_cfg(raw)[1], frozenset({"adv_crypto"}))
+                    echoed = await write_cfg(client, payload)
+            if cfgmod.get(echoed, "adv_crypto") != 1:
+                raise ha_error("encryption_not_switched_on", name=self.name)
+        except (HomeAssistantError, OtaError, cfgmod.ConfigError) as err:
+            _LOGGER.warning("%s: could not write the encryption key back: %s", self.name, err)
+            return False
+        self.set_raw(echoed)
+        self._clear_issue("encryption_restore_failed")
+        return True
 
     def _update_settings_issue(self) -> None:
         """Other settings are never re-applied automatically: a repair issue points at the Restore button."""
@@ -438,8 +555,8 @@ class ConfigStore:
     async def _restore_encryption(self, snap: dict[str, Any]) -> None:
         """If encryption was on in the snapshot (before a flash or a reset) and is off now, switch it on again WITHOUT writing a key: the key stays
         in the sensor's EEPROM. Verified by the block the sensor reports back. Nothing secret is logged or stored."""
-        if not snap.get("crypto"):
-            return  # it was off (or unknown): leave it alone
+        if not snap.get("crypto") or self._issue_open("encryption_key_replaced"):
+            return  # it was off (or unknown), or the key on the sensor is not BTHome's: leave it alone
         raw = self.raw
         if raw is None or not cfgmod.is_verified(raw):
             return
@@ -506,9 +623,12 @@ class ConfigStore:
         self._issue("flash_unconfirmed")
 
     # -- encryption_changed: cleared by the first BTHome reading afterwards ------------------
-    def _encryption_issue_open(self) -> bool:
-        found = ir.async_get(self.hass).async_get_issue(DOMAIN, f"encryption_changed_{self.entry.entry_id}")
+    def _issue_open(self, key: str) -> bool:
+        found = ir.async_get(self.hass).async_get_issue(DOMAIN, f"{key}_{self.entry.entry_id}")
         return found is not None and found.active
+
+    def _encryption_issue_open(self) -> bool:
+        return self._issue_open("encryption_changed")
 
     @callback
     def async_watch_bthome(self) -> None:
@@ -519,8 +639,15 @@ class ConfigStore:
             return
         ent_reg = er.async_get(self.hass)
         device = find_bthome_device(self.hass, self.address, self.entry.entry_id)
+        # only entities that carry measurements: BTHome updates the signal strength even when it cannot decrypt the advert
         ent_ids = (
-            [e.entity_id for e in er.async_entries_for_device(ent_reg, device.id) if e.platform == "bthome"]
+            [
+                e.entity_id
+                for e in er.async_entries_for_device(ent_reg, device.id)
+                if e.platform == "bthome"
+                and e.original_device_class != SensorDeviceClass.SIGNAL_STRENGTH
+                and e.entity_category != EntityCategory.DIAGNOSTIC
+            ]
             if device is not None
             else []
         )
@@ -591,6 +718,8 @@ class ConfigStore:
             raise validation_error("keep_key_with_key")
         if key is not None and not re.fullmatch(r"[0-9a-fA-F]{32}", key):
             raise validation_error("bad_key")
+        if keep_key and self._issue_open("encryption_key_replaced"):
+            raise validation_error("keep_key_after_key_replaced")  # the key on the sensor is not the one BTHome has
         async with self._session() as client:
             raw = await read_cfg_raw(client)
             hw = parse_cfg(raw)[1]
@@ -613,6 +742,7 @@ class ConfigStore:
         self.set_raw(echoed)
         if enable:
             self._clear_issue("encryption_restore_failed")
+            self._clear_issue("encryption_key_replaced")
         if changed:  # nothing to check in BTHome when the sensor already was as requested
             self._issue("encryption_changed")
             self.async_watch_bthome()

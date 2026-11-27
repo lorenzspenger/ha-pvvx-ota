@@ -479,3 +479,41 @@ async def test_keep_key_together_with_a_key_is_refused(hass: HomeAssistant, enab
         assert cfg.get(client.cfg, "adv_crypto") == 0 and client.bindkey == bytes(range(1, 17))
     finally:
         [c.stop() for c in ctx]
+
+
+async def test_a_signal_strength_update_does_not_clear_encryption_changed(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    """BTHome updates the signal strength even when it cannot decrypt: only measurements count."""
+    from homeassistant.const import EntityCategory
+
+    bt, dev = bthome_device(hass)
+    ent_reg = er.async_get(hass)
+    rssi = ent_reg.async_get_or_create(
+        "sensor",
+        "bthome",
+        "rssi_uid",
+        config_entry=bt,
+        device_id=dev.id,
+        original_device_class="signal_strength",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ).entity_id
+    diag = ent_reg.async_get_or_create(
+        "sensor", "bthome", "diag_uid", config_entry=bt, device_id=dev.id, entity_category=EntityCategory.DIAGNOSTIC
+    ).entity_id
+    temp = ent_reg.async_get_or_create("sensor", "bthome", "temp_uid", config_entry=bt, device_id=dev.id).entity_id
+    for eid in (rssi, diag, temp):
+        hass.states.async_set(eid, "unavailable")
+    entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=SAMPLE))
+    try:
+        await encrypt(hass)
+        for eid in (rssi, diag):
+            hass.states.async_set(eid, "-70")
+            hass.states.async_set(eid, "-65")
+        await hass.async_block_till_done()
+        assert issue(hass, entry, "encryption_changed")
+        hass.states.async_set(temp, "21.5")
+        await hass.async_block_till_done()
+        assert issue(hass, entry, "encryption_changed") is None
+    finally:
+        [c.stop() for c in ctx]

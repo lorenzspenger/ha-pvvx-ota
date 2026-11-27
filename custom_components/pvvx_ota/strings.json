@@ -200,6 +200,9 @@
     "keep_key_with_key": {
       "message": "Keep key and a key exclude each other: leave the key empty to keep the key the sensor holds."
     },
+    "keep_key_after_key_replaced": {
+      "message": "The flash replaced the sensor's encryption key, so the key on the sensor is not the one in the BTHome entry. Give the old key in the key field, or leave it empty to generate a new one."
+    },
     "key_not_accepted": {
       "message": "{name}: the sensor did not accept the key. This board may not support encrypted advertisements."
     },
@@ -262,6 +265,10 @@
           "cannot_restore": "There are no saved settings to restore, or the sensor is not set up at the moment."
         }
       }
+    },
+    "encryption_key_replaced": {
+      "title": "{name}: the flash replaced the encryption key",
+      "description": "The firmware update erased what the sensor had stored (firmware 5.8 changed the storage format), including its encryption key, and the key could not be carried over. Encryption is switched off and the sensor now has a new random key. To keep Home Assistant's BTHome entry working, run the pvvx_ota.set_encryption action with enable and your old key in the key field (Developer tools > Actions). Without a key the action generates a new one that you then enter in the BTHome entry. It clears when set_encryption has switched encryption on."
     },
     "encryption_restore_failed": {
       "title": "{name}: encryption was not switched back on",

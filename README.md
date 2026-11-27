@@ -20,7 +20,7 @@ Home Assistant custom integration that updates and configures [pvvx ATC_MiThermo
 * Home Assistant **2026.10.0** or newer.
 * ESPHome Bluetooth proxies with **active connections** (ESPHome 2026.10+ recommended for fast flashes), or a local adapter that can connect. Keep the sensor close to its proxy (better than about -75 dBm).
 * pvvx custom firmware **already on the sensor** (the first flash from stock firmware needs the web flasher).
-* Firmware 4.2 to 5.5, 5.7, 5.8 and 5.9 get the full settings; other versions only the update entity. Boards: see [usage](docs/usage.md).
+* Firmware 4.2 to 5.9 get the full settings; other versions only the update entity. Boards: see [usage](docs/usage.md).
 
 ## Install
 

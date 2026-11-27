@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **A flash across firmware 5.7/5.8 (either direction) keeps encryption working**: the key is carried over in memory and written back after the version check.
+- **The saved settings are written back automatically after such a flash.**
+- **New repair issue "the flash replaced the encryption key"** when the key could not be carried over; `set_encryption` with the old key (or a new one) clears it.
+- **`keep_key` is refused while that issue is open.**
+- **Firmware 5.6 is now verified** and gets the full settings.
+- **"Advert encryption changed" no longer clears on a signal strength or diagnostic reading** of the BTHome entry.
+
 ## 0.25.0-beta.4
 
 Git tag `v0.25.0-beta.4`, manifest version `0.25.0b4`.

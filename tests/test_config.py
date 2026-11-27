@@ -48,7 +48,7 @@ def test_changing_one_byte_field():
     assert new[6] == 32 and new[3] == 0x02 and new[2] == SAMPLE[2] and new[7:] == SAMPLE[7:]
 
 
-@pytest.mark.parametrize("ver", [0x56, 0x5A, 0x41, 0x60])
+@pytest.mark.parametrize("ver", [0x5A, 0x41, 0x60])
 def test_unverified_firmware_refused(ver):
     raw = bytes([0x55, ver]) + SAMPLE[2:]
     assert not cfg.is_verified(raw) and cfg.capabilities(raw, 10) == set()
@@ -355,8 +355,8 @@ async def test_unlisted_hardware_gets_no_display_entities(hass: HomeAssistant, e
 
 
 async def test_unverified_version_creates_no_config_entities(hass: HomeAssistant, enable_bluetooth, fast_batch):
-    old = bytes([0x55, 0x56]) + SAMPLE[2:]
-    entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=old), version=0x56)
+    old = bytes([0x55, 0x5A]) + SAMPLE[2:]
+    entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=old), version=0x5A)
     try:
         assert ent(hass, "number", "adv_interval") is None and ent(hass, "button", "refresh_config")
     finally:
@@ -939,8 +939,8 @@ async def test_later_read_failure_keeps_entities_but_unavailable(hass: HomeAssis
 async def test_unverified_firmware_gets_no_config_entities_buttons_or_restore(
     hass: HomeAssistant, enable_bluetooth, fast_batch
 ):
-    old = bytes([0x55, 0x56]) + SAMPLE[2:]  # 5.6: a version nobody compared
-    entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=old), version=0x56)
+    old = bytes([0x55, 0x5A]) + SAMPLE[2:]  # 5.10: a version nobody compared
+    entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=old), version=0x5A)
     try:
         for dom, key in GATED:
             assert ent(hass, dom, key) is None, (dom, key)
@@ -1398,7 +1398,26 @@ def v_block(ver: int, hw: int = 0x0A, b4: int = 0x04, b5: int = 0x06) -> bytes:
     return bytes([0x55, ver, 0xA3, 0x05, b4, b5, 0x10, 0x04, 0xA9, 0x13, 0x37, hw, 0x00])
 
 
-NEW_VERIFIED = [0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x57, 0x58, 0x59]
+NEW_VERIFIED = [
+    0x42,
+    0x43,
+    0x44,
+    0x45,
+    0x46,
+    0x47,
+    0x48,
+    0x49,
+    0x50,
+    0x51,
+    0x52,
+    0x53,
+    0x54,
+    0x55,
+    0x56,
+    0x57,
+    0x58,
+    0x59,
+]
 
 
 @pytest.mark.parametrize("ver", NEW_VERIFIED)
@@ -1406,9 +1425,9 @@ def test_verified_versions(ver):
     assert cfg.is_verified(v_block(ver))
 
 
-@pytest.mark.parametrize("ver", [0x11, 0x14, 0x21, 0x26, 0x37, 0x39, 0x40, 0x41, 0x56, 0x5A])
+@pytest.mark.parametrize("ver", [0x11, 0x14, 0x21, 0x26, 0x37, 0x39, 0x40, 0x41, 0x5A])
 def test_older_and_unknown_versions_stay_refused(ver):
-    """4.1 and older: flg2 bits 5-7 differ (longrange on bit 7) and the reply can be stale; 5.6 was never compared."""
+    """4.1 and older: flg2 bits 5-7 differ (longrange on bit 7) and the reply can be stale; anything newer than 5.9 was never compared."""
     raw = v_block(ver)
     assert not cfg.is_verified(raw) and cfg.capabilities(raw, 10) == set()
     with pytest.raises(cfg.ConfigError, match="not verified"):
