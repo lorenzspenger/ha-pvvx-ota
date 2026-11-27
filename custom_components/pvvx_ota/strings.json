@@ -27,7 +27,7 @@
       },
       "reconfigure": {
         "title": "Store the PIN",
-        "description": "Store the PIN of {name} so that Home Assistant can pair it again by itself if the proxy loses the pairing. Pairing is repeated through a proxy that offers the pairing action now; this takes about 25 seconds.",
+        "description": "Store the PIN of {name} so that Home Assistant can pair it again by itself if the proxy loses the pairing. If a PIN was set on the sensor after it was added, this pairs it for the first time. The sensor is paired through a proxy that offers the pairing action now; this takes about 25 seconds.",
         "data": {
           "pin": "PIN (1 to 999999)"
         }
@@ -40,8 +40,8 @@
       "pin_protected": "This sensor has a PIN set and no proxy can pair it (no ESPHome proxy that hears it offers the pair_pvvx action, and none has a bond with it), so it was not added and is now ignored so that it is not offered again. Add the pairing package to a proxy (see docs/pin-sensors.md in the integration repository), then un-ignore it on the integration page (Ignored devices). Or remove the PIN in TelinkMiFlasher.",
       "pin_protected_manual": "This sensor has a PIN set and no proxy can pair it (no ESPHome proxy that hears it offers the pair_pvvx action, and none has a bond with it), so it was not added. Add the pairing package to a proxy (see docs/pin-sensors.md in the integration repository) and try again, or remove the PIN in TelinkMiFlasher.",
       "reauth_successful": "The PIN was stored and the sensor is paired again.",
-      "reconfigure_successful": "The PIN was stored.",
-      "no_pin_sensor": "This sensor has no PIN pairing; there is nothing to configure."
+      "reconfigure_successful": "The PIN was stored and the sensor is paired.",
+      "no_pairing_proxy": "No proxy that hears this sensor offers the pairing action. Add the pairing package to a proxy (see docs/pin-sensors.md in the integration repository) and try again."
     },
     "error": {
       "cannot_connect": "Could not connect to the sensor (the connection did not complete within about 25 seconds). pvvx sensors are connectable only part of the time; a weak signal or a busy proxy also causes this. Wait a minute and try again. If it keeps failing and the sensor has a PIN, remove the PIN and add it again.",
@@ -239,11 +239,11 @@
     },
     "pin_bond_lost": {
       "title": "{name}: pairing lost, pair again from the proxy",
-      "description": "This sensor has a PIN and was added with a bond stored in one ESPHome proxy, but it now refuses the link even after encryption. The proxy probably lost the bond (flash erase, NVS wipe) or the PIN was changed. Press the pair button on the proxy again (see docs/pin-sensors.md in the integration repository); this issue clears after the next successful read."
+      "description": "This sensor has a PIN and was added with a bond stored in one ESPHome proxy, but it now refuses the link even after encryption. The proxy probably lost the bond (flash erase, NVS wipe) or the PIN was changed. Choose Reconfigure on the entry and enter the PIN to pair again, or press the pair button on the proxy (see docs/pin-sensors.md in the integration repository); this issue clears after the next successful read."
     },
     "pin_set": {
       "title": "{name}: a PIN was set",
-      "description": "A PIN was set on this sensor, so it only answers over an encrypted link and Home Assistant can no longer read it. Pair it through an ESPHome proxy with the pairing package (see docs/pin-sensors.md, then Reconfigure the entry), or remove the PIN in TelinkMiFlasher. It clears by itself once the sensor can be read without a PIN."
+      "description": "A PIN was set on this sensor, so it only answers over an encrypted link and Home Assistant can no longer read it. Open the entry's three-dot menu, choose Reconfigure and enter the PIN: it is stored and the sensor is paired through an ESPHome proxy that offers the pairing action (pairing package, see docs/pin-sensors.md). Or remove the PIN in TelinkMiFlasher. It clears by itself once the sensor can be read without a PIN."
     },
     "pin_pairing_failed": {
       "title": "{name}: could not be paired with its PIN",

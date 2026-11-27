@@ -364,10 +364,15 @@ class PvvxOtaConfigFlow(ConfigFlow, domain=DOMAIN):
         return self._entry_done("reauth_confirm", self._get_reauth_entry())
 
     async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Store (or change) the PIN of a PIN-bonded sensor, so it can be paired again by itself later."""
+        """Store (or change) the PIN of a sensor and pair it through a proxy. A sensor that is not bonded yet (a PIN was set
+        after it was added) is paired here for the first time; that needs a proxy that offers the pairing action."""
         entry = self._get_reconfigure_entry()
-        if not entry.data.get(CONF_PIN_BONDED):
-            return self.async_abort(reason="no_pin_sensor")
+        if (
+            self._pair_task is None
+            and not entry.data.get(CONF_PIN_BONDED)
+            and not pairing_proxies(self.hass, str(entry.data[CONF_ADDRESS]))
+        ):
+            return self.async_abort(reason="no_pairing_proxy")
         return await self._async_pin_for_entry("reconfigure", entry, user_input)
 
     async def async_step_reconfigure_done(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -392,6 +397,8 @@ class PvvxOtaConfigFlow(ConfigFlow, domain=DOMAIN):
             return self._failed_form(step_id, address, entry.title, outcome)
         ver, hw, source = outcome.ok
         self._pairing_ok(address)
+        for key in ("pin_set", "pin_bond_lost"):
+            ir.async_delete_issue(self.hass, DOMAIN, f"{key}_{entry.entry_id}")
         return self.async_update_reload_and_abort(
             entry,
             data_updates={

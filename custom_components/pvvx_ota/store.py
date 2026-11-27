@@ -29,6 +29,7 @@ from . import config as cfgmod
 from .const import (
     CONF_AUTO_CLOCK_SYNC,
     CONF_AUTO_RESTORE_ENCRYPTION,
+    CONF_BONDED_SCANNER,
     CONF_CALIB_KNOWN,
     CONF_HW_ID,
     CONF_PIN,
@@ -41,6 +42,7 @@ from .const import (
 from .device import async_connected
 from .errors import ha_error, validation_error
 from .ota import OtaError, PairingRequiredError, fmt_version, parse_cfg, read_cfg_raw, send_command, write_cfg
+from .pairing import async_forget_bond, async_repair
 from .registry import find_bthome_device
 from .shared import get_shared
 
@@ -782,11 +784,50 @@ class ConfigStore:
             reply = await send_command(client, b"\x70" + pin.to_bytes(4, "little"), 0x70, log=False)
         if len(reply) < 2 or reply[1] == 3:
             raise ha_error("pin_not_stored", name=self.name)
-        if pin:
-            self._issue("pin_set")
+        result: dict[str, Any] = {"pin_set": bool(pin)}
+        if not self.entry.data.get(CONF_PIN_BONDED):
+            if pin:
+                self._issue("pin_set")  # Reconfigure stores the PIN and pairs through a proxy
+            else:
+                self._clear_issue("pin_set")
+        elif pin:
+            result["paired"] = await self._pair_after_pin_change(pin)
         else:
-            self._clear_issue("pin_set")
-        return {"pin_set": bool(pin)}
+            await self._forget_pin_bond()
+        return result
+
+    async def _pair_after_pin_change(self, pin: int) -> bool:
+        """A new PIN erased the sensor's bonds: keep the new PIN in the entry and pair again through the bonded proxy. If
+        that does not work the *pairing lost* issue tells the user to Reconfigure."""
+        data = self.entry.data
+        self.hass.config_entries.async_update_entry(self.entry, data={**data, CONF_PIN: pin})
+        self._clear_issue("pin_set")
+        source = data.get(CONF_BONDED_SCANNER)
+        ok = False
+        if source:
+            async with get_shared(self.hass).lock:
+                ok = await async_repair(self.hass, self.address, str(source), pin)
+            if ok:
+                try:
+                    await self.async_refresh()  # proves the new bond and clears the issue
+                except HomeAssistantError:
+                    ok = False
+        if not ok:
+            self._issue("pin_bond_lost")
+        return ok
+
+    async def _forget_pin_bond(self) -> None:
+        """The PIN was cleared: the entry is a plain one again and the proxy drops its bond."""
+        data = self.entry.data
+        source = data.get(CONF_BONDED_SCANNER)
+        self.hass.config_entries.async_update_entry(
+            self.entry,
+            data={k: v for k, v in data.items() if k not in (CONF_PIN, CONF_PIN_BONDED, CONF_BONDED_SCANNER)},
+        )
+        self._clear_issue("pin_set")
+        self._clear_issue("pin_bond_lost")
+        if source:
+            await async_forget_bond(self.hass, self.address, str(source))
 
     async def async_reset_defaults(self) -> None:
         """Command 0x56: factory settings of the config block. The settings before are saved first."""

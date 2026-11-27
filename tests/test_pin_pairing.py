@@ -28,7 +28,8 @@ from custom_components.pvvx_ota.const import (
 from custom_components.pvvx_ota.diagnostics import async_get_config_entry_diagnostics
 from custom_components.pvvx_ota.ota import PairingRequiredError
 
-from .test_config import MAC, SAMPLE, patch_catalog
+from .fake_gatt import FakeClient
+from .test_config import MAC, SAMPLE, patch_catalog, setup_cfg_entry
 from .test_ha import FLOW_CONN, fast_read_cfg, svc
 from .test_pin_bond import PROXY, Linked, connects, probe  # noqa: F401
 from .translated import raises_key
@@ -322,12 +323,7 @@ async def test_reauth_not_pvvx_after_pairing_aborts(hass: HomeAssistant, enable_
     assert r["type"] is FlowResultType.ABORT and r["reason"] == "not_pvvx"
 
 
-async def test_reconfigure_stores_the_pin_of_a_bonded_sensor_only(hass: HomeAssistant, enable_bluetooth):
-    plain = pin_entry(hass, bonded=False)
-    r = await plain.start_reconfigure_flow(hass)
-    assert r["type"] is FlowResultType.ABORT and r["reason"] == "no_pin_sensor"
-    await hass.config_entries.async_remove(plain.entry_id)
-
+async def test_reconfigure_stores_the_pin_of_a_bonded_sensor(hass: HomeAssistant, enable_bluetooth):
     entry = pin_entry(hass)
     r = await entry.start_reconfigure_flow(hass)
     assert r["type"] is FlowResultType.FORM and r["step_id"] == "reconfigure"
@@ -341,6 +337,41 @@ async def test_reconfigure_stores_the_pin_of_a_bonded_sensor_only(hass: HomeAssi
         r = await submit(hass, r["flow_id"], SECRET_PIN)
     assert r["type"] is FlowResultType.ABORT and r["reason"] == "reconfigure_successful"
     assert entry.data[CONF_PIN] == SECRET_PIN
+
+
+async def test_reconfigure_pairs_a_sensor_that_got_its_pin_after_it_was_added(
+    hass: HomeAssistant, enable_bluetooth, caplog
+):
+    caplog.set_level(logging.DEBUG)
+    entry = pin_entry(hass, bonded=False)
+    issue_ids = [f"pin_set_{entry.entry_id}", f"pin_bond_lost_{entry.entry_id}"]
+    for issue_id in issue_ids:
+        ir.async_create_issue(
+            hass, DOMAIN, issue_id, is_fixable=False, severity=ir.IssueSeverity.WARNING, translation_key=issue_id[:-33]
+        )
+    with patch("custom_components.pvvx_ota.config_flow.pairing_proxies", return_value=[]):
+        r = await entry.start_reconfigure_flow(hass)
+    assert r["type"] is FlowResultType.ABORT and r["reason"] == "no_pairing_proxy"
+    assert CONF_PIN_BONDED not in entry.data
+    with patch("custom_components.pvvx_ota.config_flow.pairing_proxies", return_value=[PROXY_OFFER]):
+        r = await entry.start_reconfigure_flow(hass)
+    assert r["type"] is FlowResultType.FORM and r["step_id"] == "reconfigure"
+    ctx, kwargs = connections(Linked(cfg=SAMPLE))
+    pair = AsyncMock()
+    with (
+        ctx,
+        patch("custom_components.pvvx_ota.config_flow.pairing_proxies", return_value=[PROXY_OFFER]),
+        patch("custom_components.pvvx_ota.config_flow.async_pair", pair),
+        patch("custom_components.pvvx_ota.async_setup_entry", return_value=True),
+    ):
+        r = await submit(hass, r["flow_id"], SECRET_PIN)
+    assert r["type"] is FlowResultType.ABORT and r["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_PIN] == SECRET_PIN and entry.data[CONF_PIN_BONDED] is True
+    assert entry.data[CONF_BONDED_SCANNER] == PROXY
+    pair.assert_awaited_once_with(hass, PROXY_OFFER, MAC, SECRET_PIN)
+    assert kwargs == [{"encrypt": True, "bonded_scanner": PROXY}]
+    assert all(ir.async_get(hass).async_get_issue(DOMAIN, i) is None for i in issue_ids)
+    assert str(SECRET_PIN) not in caplog.text
 
 
 async def test_dead_bond_without_a_pin_starts_reauth_but_unreachable_does_not(
@@ -775,3 +806,94 @@ async def test_a_sensor_without_a_bond_calls_nothing_on_removal(hass: HomeAssist
     with patch.object(pairing, "async_forget_bond") as forget:
         assert await hass.config_entries.async_remove(entry.entry_id)
     forget.assert_not_called()
+
+
+# -- set_pin keeps the entry in step with the sensor ---------------------------------------------------------------
+
+
+async def pin_store(hass, bonded):
+    """A loaded entry (plain or PIN-bonded) with a fake sensor behind it."""
+    client = FakeClient(cfg=SAMPLE)
+    entry, _calls, ctx = await setup_cfg_entry(hass, client)
+    if bonded:
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_PIN_BONDED: True, CONF_BONDED_SCANNER: PROXY, CONF_PIN: 111111}
+        )
+    return entry, client, ctx
+
+
+def issue(hass, entry, key):
+    return ir.async_get(hass).async_get_issue(DOMAIN, f"{key}_{entry.entry_id}")
+
+
+async def test_set_pin_on_a_bonded_entry_stores_it_and_pairs_again(hass: HomeAssistant, enable_bluetooth, caplog):
+    caplog.set_level(logging.DEBUG)
+    entry, client, ctx = await pin_store(hass, bonded=True)
+    repair = AsyncMock(return_value=True)
+    try:
+        with patch("custom_components.pvvx_ota.store.async_repair", repair):
+            res = await entry.runtime_data.async_set_pin(SECRET_PIN)
+        assert res == {"pin_set": True, "paired": True} and client.pin == SECRET_PIN
+        assert entry.data[CONF_PIN] == SECRET_PIN and entry.data[CONF_PIN_BONDED] is True
+        repair.assert_awaited_once_with(hass, MAC, PROXY, SECRET_PIN)
+        assert issue(hass, entry, "pin_bond_lost") is None and issue(hass, entry, "pin_set") is None
+        assert str(SECRET_PIN) not in caplog.text
+    finally:
+        [c.stop() for c in ctx]
+
+
+@pytest.mark.parametrize("failure", ["no_proxy", "read_fails"])
+async def test_set_pin_on_a_bonded_entry_that_cannot_pair_again_raises_the_issue(
+    hass: HomeAssistant, enable_bluetooth, failure
+):
+    entry, client, ctx = await pin_store(hass, bonded=True)
+    try:
+        with patch("custom_components.pvvx_ota.store.async_repair", AsyncMock(return_value=failure == "read_fails")):
+            if failure == "read_fails":
+                with patch.object(
+                    type(entry.runtime_data), "async_refresh", AsyncMock(side_effect=HomeAssistantError("x"))
+                ):
+                    res = await entry.runtime_data.async_set_pin(SECRET_PIN)
+            else:
+                res = await entry.runtime_data.async_set_pin(SECRET_PIN)
+        assert res == {"pin_set": True, "paired": False}
+        assert entry.data[CONF_PIN] == SECRET_PIN  # kept: Reconfigure or the next automatic re-pair uses it
+        assert issue(hass, entry, "pin_bond_lost") is not None
+        assert SECRET_PIN not in [
+            v for i in ir.async_get(hass).issues.values() for v in i.translation_placeholders.values()
+        ]
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_clearing_the_pin_of_a_bonded_entry_forgets_the_bond(hass: HomeAssistant, enable_bluetooth):
+    entry, client, ctx = await pin_store(hass, bonded=True)
+    forget = AsyncMock(return_value=True)
+    try:
+        entry.runtime_data._issue("pin_bond_lost")
+        with patch("custom_components.pvvx_ota.store.async_forget_bond", forget):
+            res = await entry.runtime_data.async_set_pin(0)
+        assert res == {"pin_set": False} and client.pin == 0
+        assert not {CONF_PIN, CONF_PIN_BONDED, CONF_BONDED_SCANNER} & set(entry.data)
+        forget.assert_awaited_once_with(hass, MAC, PROXY)
+        assert issue(hass, entry, "pin_bond_lost") is None and issue(hass, entry, "pin_set") is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_set_pin_on_an_unbonded_entry_raises_pin_set_and_clearing_removes_it(
+    hass: HomeAssistant, enable_bluetooth
+):
+    entry, client, ctx = await pin_store(hass, bonded=False)
+    try:
+        with patch("custom_components.pvvx_ota.store.async_repair", AsyncMock()) as repair:
+            res = await entry.runtime_data.async_set_pin(SECRET_PIN)
+        assert res == {"pin_set": True} and CONF_PIN not in entry.data and CONF_PIN_BONDED not in entry.data
+        assert issue(hass, entry, "pin_set") is not None
+        repair.assert_not_awaited()
+        with patch("custom_components.pvvx_ota.store.async_forget_bond", AsyncMock()) as forget:
+            await entry.runtime_data.async_set_pin(0)
+        assert issue(hass, entry, "pin_set") is None
+        forget.assert_not_awaited()
+    finally:
+        [c.stop() for c in ctx]

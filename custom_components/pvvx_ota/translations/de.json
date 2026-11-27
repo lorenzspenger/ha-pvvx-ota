@@ -27,7 +27,7 @@
       },
       "reconfigure": {
         "title": "PIN speichern",
-        "description": "Speichere die PIN von {name}, damit Home Assistant ihn selbst neu koppeln kann, falls der Proxy die Kopplung verliert. Die Kopplung wird jetzt über einen Proxy wiederholt, der die Koppel-Aktion anbietet; das dauert etwa 25 Sekunden.",
+        "description": "Speichere die PIN von {name}, damit Home Assistant ihn selbst neu koppeln kann, falls der Proxy die Kopplung verliert. Wurde die PIN erst nach dem Hinzufügen auf dem Sensor gesetzt, wird er hier zum ersten Mal gekoppelt. Die Kopplung läuft über einen Proxy, der die Koppel-Aktion anbietet; das dauert etwa 25 Sekunden.",
         "data": {
           "pin": "PIN (1 bis 999999)"
         }
@@ -40,8 +40,8 @@
       "pin_protected": "Dieser Sensor hat eine PIN gesetzt und kein Proxy kann ihn koppeln (kein ESPHome-Proxy, der ihn hört, bietet die Aktion pair_pvvx an, und keiner hat eine Kopplung mit ihm), daher wurde er nicht hinzugefügt und wird jetzt ignoriert, damit er nicht erneut angeboten wird. Füge einem Proxy das Koppel-Paket hinzu (siehe docs/pin-sensors.md im Repository der Integration) und hebe das Ignorieren dann auf der Integrationsseite auf (Ignorierte Geräte). Oder entferne die PIN mit TelinkMiFlasher.",
       "pin_protected_manual": "Dieser Sensor hat eine PIN gesetzt und kein Proxy kann ihn koppeln (kein ESPHome-Proxy, der ihn hört, bietet die Aktion pair_pvvx an, und keiner hat eine Kopplung mit ihm), daher wurde er nicht hinzugefügt. Füge einem Proxy das Koppel-Paket hinzu (siehe docs/pin-sensors.md im Repository der Integration) und versuche es erneut, oder entferne die PIN mit TelinkMiFlasher.",
       "reauth_successful": "Die PIN wurde gespeichert und der Sensor ist neu gekoppelt.",
-      "reconfigure_successful": "Die PIN wurde gespeichert.",
-      "no_pin_sensor": "Dieser Sensor hat keine PIN-Kopplung; es gibt nichts zu konfigurieren."
+      "reconfigure_successful": "Die PIN wurde gespeichert und der Sensor ist gekoppelt.",
+      "no_pairing_proxy": "Kein Proxy, der diesen Sensor hört, bietet die Koppel-Aktion an. Füge das Koppel-Paket zu einem Proxy hinzu (siehe docs/pin-sensors.md im Repository der Integration) und versuche es erneut."
     },
     "error": {
       "cannot_connect": "Verbindung zum Sensor nicht möglich (die Verbindung kam innerhalb von etwa 25 Sekunden nicht zustande). pvvx-Sensoren sind nur zeitweise verbindbar; auch ein schwaches Signal oder ein ausgelasteter Proxy kann die Ursache sein. Bitte eine Minute warten und es erneut versuchen. Klappt es weiterhin nicht und hat der Sensor eine PIN, entferne die PIN und füge ihn erneut hinzu.",
@@ -239,11 +239,11 @@
     },
     "pin_bond_lost": {
       "title": "{name}: Kopplung verloren, am Proxy neu koppeln",
-      "description": "Dieser Sensor hat eine PIN und wurde mit einer Kopplung in einem ESPHome-Proxy hinzugefügt, verweigert die Verbindung aber jetzt auch nach der Verschlüsselung. Wahrscheinlich hat der Proxy die Kopplung verloren (Flash gelöscht, NVS gelöscht) oder die PIN wurde geändert. Drücke am Proxy erneut die Koppeln-Taste (siehe docs/pin-sensors.md im Repository der Integration); dieses Problem verschwindet nach dem nächsten erfolgreichen Lesen."
+      "description": "Dieser Sensor hat eine PIN und wurde mit einer Kopplung in einem ESPHome-Proxy hinzugefügt, verweigert die Verbindung aber jetzt auch nach der Verschlüsselung. Wahrscheinlich hat der Proxy die Kopplung verloren (Flash gelöscht, NVS gelöscht) oder die PIN wurde geändert. Wähle am Eintrag Neu konfigurieren und gib die PIN ein, um erneut zu koppeln, oder drücke am Proxy die Koppeln-Taste (siehe docs/pin-sensors.md im Repository der Integration); dieses Problem verschwindet nach dem nächsten erfolgreichen Lesen."
     },
     "pin_set": {
       "title": "{name}: PIN wurde gesetzt",
-      "description": "Auf diesem Sensor wurde eine PIN gesetzt, er antwortet nur noch über eine verschlüsselte Verbindung und Home Assistant kann ihn nicht mehr lesen. Koppele ihn über einen ESPHome-Proxy mit dem Koppel-Paket (siehe docs/pin-sensors.md, dann den Eintrag neu konfigurieren) oder entferne die PIN mit TelinkMiFlasher. Die Meldung verschwindet von selbst, sobald sich der Sensor ohne PIN lesen lässt."
+      "description": "Auf diesem Sensor wurde eine PIN gesetzt, er antwortet nur noch über eine verschlüsselte Verbindung und Home Assistant kann ihn nicht mehr lesen. Öffne das Drei-Punkte-Menü des Eintrags, wähle Neu konfigurieren und gib die PIN ein: Sie wird gespeichert und der Sensor wird über einen ESPHome-Proxy gekoppelt, der die Koppel-Aktion anbietet (Koppel-Paket, siehe docs/pin-sensors.md). Oder entferne die PIN mit TelinkMiFlasher. Die Meldung verschwindet von selbst, sobald sich der Sensor ohne PIN lesen lässt."
     },
     "pin_pairing_failed": {
       "title": "{name}: konnte nicht mit seiner PIN gekoppelt werden",

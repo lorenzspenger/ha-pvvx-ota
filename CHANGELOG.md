@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Reconfigure pairs a sensor whose PIN was set after it was added:** the *PIN was set* repair issue now leads to *Reconfigure*, which stores the PIN and pairs through a proxy that offers `pair_pvvx`; without such a proxy it stops with a hint. The entry, its options and settings stay.
+- **`pvvx_ota.set_pin` keeps the entry in step with the sensor:** on a PIN-bonded entry the new PIN is stored and the sensor is paired again through its proxy (the *pairing lost* issue appears if that fails); clearing the PIN removes the bond from the entry and asks the proxy to forget it. The response of a bonded entry carries `paired`.
 - **The post-flash version check survives a restart or reload:** a restart, entry reload or integration update within a few minutes after a flash now runs the check afterwards (encryption restored, differing settings flagged, installed version updated; a flash across firmware 5.7/5.8 raises the *encryption key replaced* issue).
 
 ## 0.25.0-beta.7
