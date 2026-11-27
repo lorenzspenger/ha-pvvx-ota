@@ -1,10 +1,32 @@
 # Changelog
 
-## Unreleased
+## 0.26.0-beta.1
 
+Git tag `v0.26.0-beta.1`, manifest version `0.26.0b1`.
+
+- **Install a specific firmware version, including an older one:** `update.install` accepts `version` (for example `5.7`), `pvvx_ota.flash_latest` has a new `version` field.
+- **Only verified releases 4.2 to 5.9 with an image for the sensor's board are accepted**, and not older than the firmware that knows the sensor's hardware id; a refusal lists the allowed versions.
+- **Older images come from pinned pvvx commits** and are checked against a SHA-256 and size table before the flash; from 4.7 on the board byte in the image header is checked too.
+- **New script `scripts/generate_firmware_versions.py`** regenerates that table from a clone of pvvx/ATC_MiThermometer.
+- **A downgrade across firmware 5.7/5.8 carries over settings and encryption key**, as an update does.
+- **An unconfirmed flash counts as done only if the sensor reports exactly the version that was flashed.**
+- **New docs:** `docs/downgrade-research.md` (source research behind this).
+- **Firmware newer than this integration knows (for example the pvvx 6.0 beta) is marked in the release notes**, and after such a flash the new *firmware not verified* repair issue says that encryption and settings were not restored or checked; it clears once the sensor runs a verified version.
 - **Reconfigure pairs a sensor whose PIN was set after it was added:** the *PIN was set* repair issue now leads to *Reconfigure*, which stores the PIN and pairs through a proxy that offers `pair_pvvx`; without such a proxy it stops with a hint. The entry, its options and settings stay.
 - **`pvvx_ota.set_pin` keeps the entry in step with the sensor:** on a PIN-bonded entry the new PIN is stored and the sensor is paired again through its proxy (the *pairing lost* issue appears if that fails); clearing the PIN removes the bond from the entry and asks the proxy to forget it. The response of a bonded entry carries `paired`.
 - **The post-flash version check survives a restart or reload:** a restart, entry reload or integration update within a few minutes after a flash now runs the check afterwards (encryption restored, differing settings flagged, installed version updated; a flash across firmware 5.7/5.8 raises the *encryption key replaced* issue).
+
+## 0.26.0-dev.1
+
+Git tag `v0.26.0-dev.1`, manifest version `0.26.0.dev1`. Test build from the `feat/specific-version` branch; not for general use.
+
+- **Install a specific firmware version, including an older one:** `update.install` accepts `version` (for example `5.7`), `pvvx_ota.flash_latest` has a new `version` field.
+- **Only verified releases 4.2 to 5.9 with an image for the sensor's board are accepted**, and not older than the firmware that knows the sensor's hardware id; a refusal lists the allowed versions.
+- **Older images come from pinned pvvx commits** and are checked against a SHA-256 and size table before the flash; from 4.7 on the board byte in the image header is checked too.
+- **New script `scripts/generate_firmware_versions.py`** regenerates that table from a clone of pvvx/ATC_MiThermometer.
+- **A downgrade across firmware 5.7/5.8 carries over settings and encryption key**, as an update does.
+- **An unconfirmed flash counts as done only if the sensor reports exactly the version that was flashed.**
+- **New docs:** `docs/downgrade-research.md` (source research behind this).
 
 ## 0.25.0-beta.7
 

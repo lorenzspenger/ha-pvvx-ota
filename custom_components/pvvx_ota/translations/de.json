@@ -75,8 +75,8 @@
       }
     },
     "flash_latest": {
-      "name": "Neueste Version flashen",
-      "description": "Flasht das neueste Release-Image für diesen Sensor, auch wenn er schon aktuell ist. Dient zum Abstimmen der Flash-Geschwindigkeit.",
+      "name": "Neueste oder gewählte Version flashen",
+      "description": "Flasht das neueste Release-Image für diesen Sensor, auch wenn er schon aktuell ist, oder das unter Version genannte Release (auch ein älteres). Dient zum Abstimmen der Flash-Geschwindigkeit.",
       "fields": {
         "status_every": {
           "name": "Statusintervall",
@@ -85,6 +85,10 @@
         "force": {
           "name": "Erzwingen",
           "description": "Auch flashen, wenn die Batteriespannung unter 2,5 V liegt."
+        },
+        "version": {
+          "name": "Version",
+          "description": "Dieses Release statt des neuesten installieren, zum Beispiel 5.7. Angenommen werden nur Releases, für die es ein geprüftes Image für das Board dieses Sensors gibt."
         }
       }
     },
@@ -226,6 +230,18 @@
     },
     "sensor_not_heard": {
       "message": "{name} ({address}) wurde noch von keinem verbindbaren Bluetooth-Scanner gehört."
+    },
+    "version_format": {
+      "message": "\"{version}\" ist keine Firmware-Version. Schreibe sie so: 5.7."
+    },
+    "version_not_available": {
+      "message": "Die Firmware {version} kann auf {name} ({board}) nicht installiert werden: Für das Board und die Hardware dieses Sensors gibt es kein geprüftes Image davon. Wählbare Versionen: {allowed}."
+    },
+    "version_board_unknown": {
+      "message": "Das Board von {name} lässt sich nicht bestimmen, daher kann keine bestimmte Version gewählt werden: {error}"
+    },
+    "catalog_needed_for_version": {
+      "message": "Die Firmware-Liste wird gebraucht, um das Board des Sensors zu finden, und sie ist nicht verfügbar: {error}. Versuche es später erneut."
     }
   },
   "issues": {

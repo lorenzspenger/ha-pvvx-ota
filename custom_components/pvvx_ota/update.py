@@ -55,10 +55,13 @@ from .errors import ha_error, validation_error
 from .firmware import (
     HISTORY_PAGE,
     Catalog,
+    Pin,
     Target,
     check_local_image,
     choose_target,
+    installable_versions,
     notes_between,
+    pin_for,
     plain,
 )
 from .ota import (
@@ -95,6 +98,7 @@ _SCHEMAS: dict[str, dict[Any, Any]] = {
     "flash_latest": {
         vol.Optional("status_every", default=8): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
         vol.Optional("force", default=False): cv.boolean,
+        vol.Optional("version"): cv.string,
     },
     "set_encryption": {
         vol.Required("enable"): cv.boolean,
@@ -170,7 +174,10 @@ class PvvxUpdateEntity(UpdateEntity):
     _attr_should_poll = False  # own timers: the catalog (HTTP) and the device read (Bluetooth, an option) run apart
     _attr_device_class = UpdateDeviceClass.FIRMWARE
     _attr_supported_features = (
-        UpdateEntityFeature.INSTALL | UpdateEntityFeature.PROGRESS | UpdateEntityFeature.RELEASE_NOTES
+        UpdateEntityFeature.INSTALL
+        | UpdateEntityFeature.PROGRESS
+        | UpdateEntityFeature.RELEASE_NOTES
+        | UpdateEntityFeature.SPECIFIC_VERSION
     )
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:
@@ -510,12 +517,49 @@ class PvvxUpdateEntity(UpdateEntity):
 
     # -- install -------------------------------------------------------
     async def async_install(self, version: str | None, backup: bool, **kwargs: Any) -> None:
-        """Install the latest release image for this device's board."""
-        await self._async_flash(None, None)
+        """Install the latest release image for this device's board, or the release named in ``version`` (also older ones)."""
+        await self._async_flash(None, None, wanted=await self._async_wanted(version))
 
-    async def async_flash_latest(self, status_every: int = 8, force: bool = False) -> None:
-        """Entity service: flash the latest release (even if up to date) with a tunable status interval."""
-        await self._async_flash(None, None, status_every, force)
+    async def async_flash_latest(self, status_every: int = 8, force: bool = False, version: str | None = None) -> None:
+        """Entity service: flash the latest release (even if up to date) with a tunable status interval; ``version`` names
+        another release instead."""
+        await self._async_flash(None, None, status_every, force, wanted=await self._async_wanted(version))
+
+    def _pin(self, wanted: int, hw_id: int | None, catalog: Catalog) -> Pin:
+        """The pinned image of a release for this sensor, or a validation error naming the releases that are allowed."""
+        try:
+            board = catalog.board_for(hw_id)
+        except FirmwareError as err:
+            raise validation_error("version_board_unknown", name=self._name, error=err) from err
+        allowed = installable_versions(board, hw_id)
+        pin = pin_for(wanted, board) if wanted in allowed else None
+        if pin is None:
+            raise validation_error(
+                "version_not_available",
+                version=fmt_version(wanted),
+                name=self._name,
+                board=board,
+                allowed=", ".join(fmt_version(v) or "" for v in allowed) or "-",
+            )
+        return pin
+
+    async def _async_wanted(self, version: str | None) -> int | None:
+        """The release a specific-version request names, checked for this sensor (None: the latest release, as without a
+        version). The release that is the offered one is the latest path too, so it does not need a pinned image."""
+        if version is None:
+            return None
+        wanted = parse_version(version.strip().removeprefix("v").removeprefix("V"))
+        if wanted is None:
+            raise validation_error("version_format", version=version)
+        shared = get_shared(self.hass)
+        assert shared.source is not None
+        try:
+            catalog = await shared.source.async_catalog()
+        except FirmwareError as err:
+            raise validation_error("catalog_needed_for_version", error=err) from err
+        self._pin(wanted, self._hw_id, catalog)  # refuses before the queue and before any connection
+        target = choose_target(catalog, self._hw_id, self.beta_wanted)
+        return None if wanted == target.version and not target.is_beta else wanted
 
     async def async_flash_file(self, path: str, force: bool = False, skip_board_check: bool = False) -> None:
         """Entity service: flash a local image (the file name must name the device's board, unless ``skip_board_check``)."""
@@ -625,6 +669,7 @@ class PvvxUpdateEntity(UpdateEntity):
         status_every: int = 8,
         force: bool = False,
         skip_board_check: bool = False,
+        wanted: int | None = None,
     ) -> None:
         shared = get_shared(self.hass)
         assert shared.source is not None
@@ -651,7 +696,21 @@ class PvvxUpdateEntity(UpdateEntity):
                     self._store_cfg.set_raw(raw)
                     await self._store_cfg._auto_clock(client, raw)  # in this connection anyway; never fatal
                     self._store_cfg.take_snapshot()  # a flash can reset settings; the user may restore them
-                    if local is None:
+                    if local is None and wanted is not None:
+                        assert catalog is not None
+                        pin = self._pin(wanted, hw, catalog)  # with the hardware id just read
+                        target = Target(wanted)
+                        _LOGGER.info(
+                            "%s: installing release V%s from commit %s%s",
+                            self._name,
+                            fmt_version(wanted),
+                            pin.commit[:7],
+                            " (older than the installed one)" if wanted < ver else "",
+                        )
+                        fw = await shared.source.async_download_pinned(
+                            pin
+                        )  # size, SHA-256 and header are checked there
+                    elif local is None:
                         assert catalog is not None
                         target = choose_target(catalog, hw, self.beta_wanted)
                         # the beta image already passed the board check in choose_target; size/CRC follow in download
@@ -776,7 +835,7 @@ class PvvxUpdateEntity(UpdateEntity):
                 await self._async_read_device()
                 self.async_write_ha_state()
                 self._store_cfg.flash_unconfirmed_cleared()
-                if unverified and expected is not None and self._version is not None and self._version >= expected:
+                if unverified and expected is not None and self._version == expected:
                     self._store_cfg.flash_succeeded()
                 await self._store_cfg.async_after_flash()  # encryption flag back on, differing settings flagged
                 return
