@@ -62,7 +62,7 @@ body:
     id: diagnostics
     attributes:
       label: Diagnostics
-      description: Settings > Devices & services > pvvx Thermometer OTA > the sensor's entry > ⋮ > Download diagnostics. Drag the file into this box. Bluetooth addresses, user-chosen names, PINs and keys are redacted in it; check the file before you post it.
+      description: Settings > Devices & services > pvvx Thermometer OTA > the sensor's entry > ⋮ > Download diagnostics. Drag the file into this box. Bluetooth addresses, user-chosen names, PINs and keys are redacted in it; check the file before you post it. The layout of the file is not a stable interface and can change between versions.
     validations:
       required: true
   - type: textarea

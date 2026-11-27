@@ -3,6 +3,8 @@
 ## Unreleased
 
 - **Breaking: `pvvx_ota.flash_latest` no longer has the `status_every` field**; the status is read after every 8th block.
+- **New page `docs/stability.md`, "What stays stable from 1.0":** it lists the stable, experimental and not stable interfaces.
+- **`pvvx_ota.set_pin` is marked experimental** in its action name and in the documentation. The diagnostics layout is documented as not stable.
 
 ## 0.26.0-beta.5
 

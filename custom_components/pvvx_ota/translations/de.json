@@ -107,7 +107,7 @@
       }
     },
     "set_pin": {
-      "name": "PIN setzen",
+      "name": "PIN setzen (experimentell)",
       "description": "WARNUNG: Das Setzen einer PIN löscht die Kopplungen des Sensors, und ein Sensor mit PIN antwortet nur über eine verschlüsselte Verbindung. Ohne einen Proxy, der eine Kopplung für ihn hält (siehe docs/pin-sensors.md), kann Home Assistant sich nicht mehr verbinden; TelinkMiFlasher kann die PIN entfernen. 0 schaltet die PIN aus. Diese Integration speichert und protokolliert sie nicht (der Aufruf selbst läuft über den Ereignisbus von Home Assistant, siehe docs/pin-sensors.md).",
       "fields": {
         "pin": {

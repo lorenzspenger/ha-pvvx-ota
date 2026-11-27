@@ -11,7 +11,7 @@ Home Assistant custom integration that updates and configures [pvvx ATC_MiThermo
 * An **update entity** per sensor: installed version read over Bluetooth, latest from pvvx's `firmware.json`, install with progress, release notes, optional beta firmware. *Update all* flashes your sensors one after another.
 * **Safety checks**: image checked for the sensor's own board, battery check, settings saved before a flash (restore button afterwards), slow-link abort before the end marker, repair issues for failed flashes.
 * **Sensor settings** as entities (intervals, TX power, display options, calibration offsets, clock sync, reboot). Most are disabled by default; enable what you need.
-* **Actions**: `pvvx_ota.flash_latest`, `pvvx_ota.flash_file` (local `.bin`), `pvvx_ota.set_encryption`, `pvvx_ota.set_pin` (admin only).
+* **Actions**: `pvvx_ota.flash_latest`, `pvvx_ota.flash_file` (local `.bin`), `pvvx_ota.set_encryption`, `pvvx_ota.set_pin` (experimental, admin only).
 * PIN-protected sensors: experimental workaround only, see [docs/pin-sensors.md](docs/pin-sensors.md).
 * Diagnostics download, English and German UI.
 
@@ -45,6 +45,7 @@ Home Assistant custom integration that updates and configures [pvvx ATC_MiThermo
 * [How data is updated](docs/data-updates.md), [known limitations](docs/known-limitations.md)
 * [Troubleshooting](docs/troubleshooting.md): diagnostics, logs, slow links, common problems
 * [PIN-protected sensors](docs/pin-sensors.md)
+* [What stays stable from 1.0](docs/stability.md)
 * [Design notes](docs/design-notes.md), [display layouts](docs/display-layouts.md), [firmware versions](docs/version-layouts.md)
 
 Bug reports: [issues](https://github.com/lorenzspenger/ha-pvvx-ota/issues) (please attach the diagnostics download; it has Bluetooth addresses, user-chosen names, PINs and keys redacted).

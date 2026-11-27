@@ -147,7 +147,7 @@ The *Sync clock* button always sets the sensor's clock to local time. The integr
 
 ## Actions
 
-All actions are admin only and target the sensor's update entity.
+All actions are admin only and target the sensor's update entity. Action names, fields and response keys are part of what stays stable from 1.0, see [stability.md](stability.md); `set_pin` is experimental.
 
 | Action | Fields | What it does |
 |---|---|---|
@@ -209,7 +209,7 @@ While a sensor is being added, a failed pairing leaves a *could not be paired wi
 
 ## Diagnostics
 
-*Download diagnostics* on a sensor's entry gives the entry data and options, the decoded configuration block (it holds no key), the capabilities, the firmware list summary (`live` or `stored`, when fetched, age), the last clock read, the timings and result of the last flash, the proxy the last connection used, the saved settings snapshot, the devices and the entity ids. Keys, PINs and passkeys are redacted, Bluetooth addresses keep only their last three bytes (`XX:XX:XX:0A:CF:E5`) and user-chosen names are replaced: proxies are `proxy_1`, `proxy_2`, ... the same way everywhere in one file. The layout of the file can change between versions.
+*Download diagnostics* on a sensor's entry gives the entry data and options, the decoded configuration block (it holds no key), the capabilities, the firmware list summary (`live` or `stored`, when fetched, age), the last clock read, the timings and result of the last flash, the proxy the last connection used, the saved settings snapshot, the devices and the entity ids. Keys, PINs and passkeys are redacted, Bluetooth addresses keep only their last three bytes (`XX:XX:XX:0A:CF:E5`) and user-chosen names are replaced: proxies are `proxy_1`, `proxy_2`, ... the same way everywhere in one file. The layout of the file is not a stable interface and can change in any version; do not build automations or tools on it.
 
 ## Timeouts and limits
 

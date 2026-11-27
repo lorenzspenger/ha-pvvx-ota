@@ -107,7 +107,7 @@
       }
     },
     "set_pin": {
-      "name": "Set PIN",
+      "name": "Set PIN (experimental)",
       "description": "WARNING: setting a PIN erases the sensor's bonds, and a sensor with a PIN only answers over an encrypted link. Without a proxy that holds a bond for it (see docs/pin-sensors.md) Home Assistant can no longer connect to it; TelinkMiFlasher can remove the PIN. 0 turns the PIN off. This integration neither logs nor stores it (the action call itself passes through Home Assistant's event bus, see docs/pin-sensors.md).",
       "fields": {
         "pin": {
