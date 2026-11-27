@@ -1223,7 +1223,7 @@ async def test_encryption_restored_after_flash_without_a_new_key(
     assert sum(c.key_writes for c in clients) == 0  # no key was written: it stayed on the sensor
     assert state["bindkey"] == bytes([7] * 16) and bytes([7] * 16).hex() not in caplog.text
     assert issue(hass, entry, "encryption_restore_failed") is None
-    assert "switched back on after the flash" in caplog.text
+    assert "BTHome encryption switched back on" in caplog.text
     store = entry.runtime_data
     assert cfg.get(store.raw, "adv_crypto") == 1
 

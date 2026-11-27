@@ -59,7 +59,7 @@ class ResetButton(PvvxConfigEntity, ButtonEntity):
 
     warning = (
         "Resets advertising type and the encryption flag too, so Home Assistant's BTHome link may break. "
-        "The previous settings can be restored with the restore button (not the encryption flag)."
+        "The previous settings can be restored with the restore button (the encryption flag too if it was on and the key is still on the sensor)."
     )
 
     def __init__(self, hass: HomeAssistant, entry: PvvxConfigEntry) -> None:

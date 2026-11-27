@@ -241,12 +241,12 @@
     },
     "reset_defaults": {
       "title": "{name}: settings were reset to defaults",
-      "description": "The sensor's configuration was reset. Advertising type and encryption may differ from before, so check Home Assistant's BTHome entry. Select Submit in this dialog (or press the 'Restore previous settings' button) to write the previous settings back (not the encryption flag). This issue clears by itself once they are restored.",
+      "description": "The sensor's configuration was reset. Advertising type and encryption may differ from before, so check Home Assistant's BTHome entry. Select Submit in this dialog (or press the 'Restore previous settings' button) to write the previous settings back (the encryption flag too if it was on and the sensor still holds its key). This issue clears by itself once they are restored.",
       "fix_flow": {
         "step": {
           "confirm": {
             "title": "Restore the previous settings",
-            "description": "The settings saved before the reset of {name} are written back to the sensor (not the encryption flag)."
+            "description": "The settings saved before the reset of {name} are written back to the sensor (the encryption flag too if it was on and the sensor still holds its key)."
           }
         },
         "error": {

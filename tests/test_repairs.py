@@ -233,3 +233,57 @@ async def test_set_encryption_without_a_change_keeps_an_open_issue(hass: HomeAss
         assert issue(hass, entry, "encryption_changed")
     finally:
         [c.stop() for c in ctx]
+
+
+async def restore_after_reset(hass, client):
+    entry, calls, ctx = await setup_cfg_entry(hass, client)
+    store = entry.runtime_data
+    store.take_snapshot()
+    client.cfg = client.cfg[:2] + cfg.apply(
+        client.cfg, {"adv_interval": 1, "adv_crypto": 0}, 10, frozenset({"adv_crypto"})
+    )
+    await store.async_refresh()
+    return entry, store, ctx
+
+
+async def test_restore_switches_encryption_back_on_when_the_key_is_there(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    client = crypto_client(True)
+    entry, store, ctx = await restore_after_reset(hass, client)
+    try:
+        assert cfg.get(client.cfg, "adv_crypto") == 0
+        await store.async_restore()
+        assert cfg.get(client.cfg, "adv_crypto") == 1 and cfg.get(client.cfg, "adv_interval") == 16
+        assert issue(hass, entry, "encryption_restore_failed") is None
+        assert issue(hass, entry, "encryption_changed") is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_restore_without_a_key_leaves_encryption_off_and_raises_the_issue(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    client = crypto_client(True)
+    entry, store, ctx = await restore_after_reset(hass, client)
+    try:
+        client.bindkey = bytes(16)  # the key is gone
+        await store.async_restore()
+        assert cfg.get(client.cfg, "adv_crypto") == 0 and cfg.get(client.cfg, "adv_interval") == 16
+        assert issue(hass, entry, "encryption_restore_failed")
+        assert issue(hass, entry, "encryption_changed") is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_restore_leaves_encryption_alone_when_the_snapshot_had_it_off(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    client = crypto_client(False, key=bytes(range(1, 17)))
+    entry, store, ctx = await restore_after_reset(hass, client)
+    try:
+        await store.async_restore()
+        assert cfg.get(client.cfg, "adv_crypto") == 0 and cfg.get(client.cfg, "adv_interval") == 16
+        assert issue(hass, entry, "encryption_restore_failed") is None
+    finally:
+        [c.stop() for c in ctx]

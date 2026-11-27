@@ -382,6 +382,9 @@ class ConfigStore:
         changes = {k: v for k, v in self._restorable(snap).items() if self.value(k) != v}
         if changes:
             await self.async_request(changes)
+        await self._restore_encryption(
+            snap
+        )  # the flag only, and only when it was on; a failure is its own repair issue
         self._clear_issue("reset_defaults")
         self._update_settings_issue()
 
@@ -403,7 +406,7 @@ class ConfigStore:
             self._clear_issue("settings_differ_after_flash")
 
     async def _restore_encryption(self, snap: dict[str, Any]) -> None:
-        """If encryption was on before the flash and is off now, switch it on again WITHOUT writing a key: the key stays
+        """If encryption was on in the snapshot (before a flash or a reset) and is off now, switch it on again WITHOUT writing a key: the key stays
         in the sensor's EEPROM. Verified by the block the sensor reports back. Nothing secret is logged or stored."""
         if not snap.get("crypto"):
             return  # it was off (or unknown): leave it alone
@@ -429,12 +432,12 @@ class ConfigStore:
             if cfgmod.get(echoed, "adv_crypto") != 1:
                 raise ha_error("encryption_not_switched_on", name=self.name)
         except (HomeAssistantError, OtaError, cfgmod.ConfigError) as err:
-            _LOGGER.warning("%s: could not switch encryption back on after the flash: %s", self.name, err)
+            _LOGGER.warning("%s: could not switch encryption back on: %s", self.name, err)
             self._issue("encryption_restore_failed")
             return
         self.set_raw(echoed)
         self._clear_issue("encryption_restore_failed")
-        _LOGGER.info("%s: BTHome encryption switched back on after the flash (the key stayed on the sensor)", self.name)
+        _LOGGER.info("%s: BTHome encryption switched back on (the key stayed on the sensor)", self.name)
 
     # -- dangerous operations (each behind its own guard in the caller) -----
     def _issue(self, key: str, fixable: bool = False) -> None:
