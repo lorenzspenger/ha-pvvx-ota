@@ -55,3 +55,17 @@ Some PIN sensors may still refuse the first protected write after a correct pair
 - **Layouts.** pvvx's `python-interface` is out of date for 4.7 and later (it still has the temperature/humidity offsets where the firmware now has `flg3` and `event_adv_cnt`), so the layout comes from the firmware sources (`src/app.h`), see [version-layouts.md](version-layouts.md). The offsets live in the sensor-coefficient command `0x25` (firmware 4.8 and later) and are relative to the chip's factory value, which the integration takes from its own table.
 - **Where a flash can stop.** The integration checks signature, size, header length and board before it connects, but does not compute the image CRC itself: the sensor checks it after the last block and refuses a bad image (it keeps the old firmware). Only a real disconnect after the end marker counts as the sensor rebooting. A link that stays up and silent for the supervision timeout we ask for plus a margin ends the flash as unconfirmed, and the version check afterwards decides.
 - **Dangerous settings.** Setting the advertising type away from BTHome, the PHY switches, encryption and the PIN all follow the normal write rules (verified firmware only, read back, one operation at a time, never during a flash) and are opt-in.
+
+### Result of candidate A: clearing the PIN over the pairing link (tested on a sensor that refused every re-encrypted link)
+- `pvvx_clear_pin` (package action) paired through one proxy (passkey answered, `auth complete` about 10 s after the link opened) and 5 s later wrote
+  `70 00 00 00 00` to 0x1F1F on that same link. ESPHome logged no write error and the link was closed 3 s later; the proxy reported `pin clear sent`.
+- Afterwards the sensor was added in Home Assistant through a plain, unencrypted connection and no PIN step: the PIN was gone and the pairing table was
+  empty (the zero-to-non-zero toggle erased it, as in the firmware source). **A write on the freshly authenticated pairing link is accepted although
+  the same sensor refused every later re-encrypted link (status 5).** That fits hypothesis 2 above (the live pairing result is honoured, the record
+  reloaded from flash is not) and it is the remote equivalent of "PIN 0, then PIN again" in TelinkMiFlasher.
+- The `70 01` reply itself was not captured (no notification subscription on that link); success was judged from the missing write error and from the sensor
+  answering unencrypted afterwards. Battery was 83 % (above the ~40 % limit pvvx names for flash writes).
+- Not yet tried: setting the PIN again and then pairing on the clean table (the second half of the procedure).
+- Later tests on other sensors showed two weaknesses, now fixed in the package: a failed connect could leave the run hanging with the busy flag set (a
+  90 s watchdog now ends it with `timeout`), and `pin clear sent` was reported although the link had dropped before the write (esphome logged "Cannot
+  write to BLE characteristic - not connected"); it now needs the link to be open at the write, otherwise the result is `clear not sent`.
