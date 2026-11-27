@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **`docs/usage.md` rewritten from the current code.** Corrections in the troubleshooting, PIN sensor, known limitations, supported functions, data update and design notes pages.
+
 ## 0.26.0-beta.4
 
 Git tag `v0.26.0-beta.4`, manifest version `0.26.0b4`.

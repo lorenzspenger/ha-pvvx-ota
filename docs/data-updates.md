@@ -6,8 +6,8 @@ The integration does not poll in a loop and keeps no connection open. Sensor rea
 
 | What | When | How |
 |---|---|---|
-| Installed firmware version | at startup, every 3 days by default (option: every day, every 7 days or never), after a flash and on *Refresh* or `homeassistant.update_entity` | one Bluetooth connection through the best proxy or adapter |
-| Sensor configuration | in the background right after startup (only if a settings entity is enabled), after a flash, after each change and on *Refresh configuration* | the same connection as above |
+| Installed firmware version | stored from the last read; read again every 3 days by default (option: every day, every 7 days or never), after a flash, on *Refresh configuration* or `homeassistant.update_entity`, and in the first background read after a start while a settings entity is enabled | one Bluetooth connection through the best proxy or adapter |
+| Sensor configuration | in the background right after startup (only if a settings entity other than *Restore previous settings* is enabled), after a flash, after each change and on *Refresh configuration* | the same connection as above |
 | Latest firmware and release notes | at startup and every 12 hours, never more often than every 10 minutes | HTTPS from pvvx's GitHub repository; the last good copy is stored and used when GitHub cannot be reached |
 | After a flash | no connection for 30 s, then the new version is read (8 attempts, 30 s apart) | one Bluetooth connection |
 
