@@ -241,12 +241,11 @@
     },
     "reset_defaults": {
       "title": "{name}: settings were reset to defaults",
-      "description": "The sensor's configuration was reset. Advertising type and encryption may differ from before, so check Home Assistant's BTHome entry. Select Submit in this dialog (or press the 'Restore previous settings' button) to write the previous settings back (the encryption flag too if it was on and the sensor still holds its key). This issue clears by itself once they are restored.",
       "fix_flow": {
         "step": {
           "confirm": {
             "title": "Restore the previous settings",
-            "description": "The settings saved before the reset of {name} are written back to the sensor (the encryption flag too if it was on and the sensor still holds its key)."
+            "description": "The configuration of {name} was reset. Advertising type and encryption may differ from before, so check Home Assistant's BTHome entry. Select Submit to write the settings saved before the reset back to the sensor (the encryption flag too if it was on and the sensor still holds its key). This issue clears by itself once a read shows the saved settings again."
           }
         },
         "error": {
@@ -259,7 +258,7 @@
     },
     "encryption_restore_failed": {
       "title": "{name}: encryption was not switched back on",
-      "description": "The flash cleared the sensor's BTHome encryption flag and it could not be switched on again automatically (the sensor may no longer hold the key). Until then Home Assistant's BTHome entry, which has the key, cannot read the sensor. Use the pvvx_ota.set_encryption action with your existing key (Developer tools > Actions) to switch it on again. It clears by itself once a read shows encryption on."
+      "description": "The flash or a restore after a reset cleared the sensor's BTHome encryption flag and it could not be switched on again automatically (the sensor may no longer hold the key). Until then Home Assistant's BTHome entry, which has the key, cannot read the sensor. Use the pvvx_ota.set_encryption action with your existing key (Developer tools > Actions) to switch it on again. It clears by itself once a read shows encryption on."
     },
     "settings_differ_after_flash": {
       "title": "{name}: settings differ from before the flash",

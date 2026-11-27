@@ -70,10 +70,10 @@ async def test_encryption_changed_stays_without_a_bthome_entity(hass: HomeAssist
     entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=SAMPLE))  # no BTHome device
     try:
         await encrypt(hass)
-        assert issue(hass, entry, "encryption_changed") and entry.runtime_data._unwatch is None
+        assert issue(hass, entry, "encryption_changed")
         bthome_device(hass)  # a device but no entity
         entry.runtime_data.async_watch_bthome()
-        assert issue(hass, entry, "encryption_changed") and entry.runtime_data._unwatch is None
+        assert issue(hass, entry, "encryption_changed")
     finally:
         [c.stop() for c in ctx]
 
@@ -318,5 +318,63 @@ async def test_a_read_with_the_saved_settings_clears_reset_defaults(hass: HomeAs
         client.cfg = SAMPLE  # put back with another tool
         await entry.runtime_data.async_refresh()
         assert issue(hass, entry, "reset_defaults") is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_restore_is_offered_when_only_the_encryption_flag_was_lost(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    client = crypto_client(True)
+    entry, calls, ctx = await setup_cfg_entry(hass, client)
+    try:
+        store = entry.runtime_data
+        assert not store.can_restore
+        store.take_snapshot()
+        client.cfg = SAMPLE[:2] + cfg.apply(client.cfg, {"adv_crypto": 0}, 10, frozenset({"adv_crypto"}))
+        await store.async_refresh()
+        assert store.can_restore and issue(hass, entry, "settings_differ_after_flash") is None
+        await store.async_restore()
+        assert cfg.get(client.cfg, "adv_crypto") == 1 and not store.can_restore
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_encryption_changed_watches_a_bthome_entity_that_appears_later(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=SAMPLE))
+    try:
+        await encrypt(hass)
+        store = entry.runtime_data
+        sensor = bthome_sensor(hass)  # the BTHome entry is added afterwards
+        await hass.async_block_till_done()
+        hass.states.async_set(sensor, "unavailable")
+        hass.states.async_set(sensor, "21")
+        await hass.async_block_till_done()
+        assert issue(hass, entry, "encryption_changed") is None and store._unwatch is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_reset_at_defaults_raises_no_issue(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    entry, ctx = await reset(hass, FakeClient(cfg=DEFAULTS))
+    try:
+        assert issue(hass, entry, "reset_defaults") is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_old_notifications_are_dismissed_at_setup(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    from homeassistant.components import persistent_notification
+
+    entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=SAMPLE))
+    try:
+        nid = f"{DOMAIN}_reset_defaults_{entry.entry_id}"
+        persistent_notification.async_create(hass, "old", notification_id=nid)
+        assert nid in hass.data["persistent_notification"]
+        assert await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+        assert nid not in hass.data["persistent_notification"]
     finally:
         [c.stop() for c in ctx]

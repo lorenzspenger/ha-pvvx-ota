@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Restore previous settings and the repair dialog also bring encryption back** when a reset changed only the encryption flag.
+- **"Advert encryption changed" also clears when the BTHome entry is added again** after the issue was raised.
+- **"Settings were reset to defaults" is not raised when the sensor already had default settings.**
+- **The "encryption was not switched back on" text also covers a restore after a reset.**
+
 ## 0.25.0-beta.2
 
 Git tag `v0.25.0-beta.2`, manifest version `0.25.0b2`.

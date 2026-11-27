@@ -241,12 +241,11 @@
     },
     "reset_defaults": {
       "title": "{name}: Einstellungen auf Standard zurückgesetzt",
-      "description": "Die Konfiguration des Sensors wurde zurückgesetzt. Advertising-Typ und Verschlüsselung können sich geändert haben, prüfe daher den BTHome-Eintrag in Home Assistant. Wähle in diesem Dialog „Senden“ (oder drücke die Schaltfläche „Vorherige Einstellungen wiederherstellen“), um die vorherigen Einstellungen zurückzuschreiben (auch das Verschlüsselungs-Flag, wenn es an war und der Sensor den Schlüssel noch hat). Das Problem verschwindet von selbst, sobald sie wiederhergestellt sind.",
       "fix_flow": {
         "step": {
           "confirm": {
             "title": "Vorherige Einstellungen wiederherstellen",
-            "description": "Die vor dem Zurücksetzen von {name} gespeicherten Einstellungen werden auf den Sensor zurückgeschrieben (auch das Verschlüsselungs-Flag, wenn es an war und der Sensor den Schlüssel noch hat)."
+            "description": "Die Konfiguration von {name} wurde zurückgesetzt. Advertising-Typ und Verschlüsselung können sich geändert haben, prüfe daher den BTHome-Eintrag in Home Assistant. Wähle „Senden“, um die vor dem Zurücksetzen gespeicherten Einstellungen auf den Sensor zurückzuschreiben (auch das Verschlüsselungs-Flag, wenn es an war und der Sensor den Schlüssel noch hat). Das Problem verschwindet von selbst, sobald ein Lesen wieder die gespeicherten Einstellungen zeigt."
           }
         },
         "error": {
@@ -259,7 +258,7 @@
     },
     "encryption_restore_failed": {
       "title": "{name}: Verschlüsselung wurde nicht wieder eingeschaltet",
-      "description": "Der Flash hat das BTHome-Verschlüsselungs-Flag des Sensors gelöscht, und es ließ sich nicht automatisch wieder einschalten (vielleicht hat der Sensor den Schlüssel nicht mehr). Solange kann der BTHome-Eintrag von Home Assistant, der den Schlüssel kennt, den Sensor nicht lesen. Schalte sie mit der Aktion pvvx_ota.set_encryption und deinem bisherigen Schlüssel wieder ein (Entwicklerwerkzeuge > Aktionen). Die Meldung verschwindet von selbst, sobald ein Lesen die Verschlüsselung als eingeschaltet zeigt."
+      "description": "Der Flash oder eine Wiederherstellung nach einem Reset hat das BTHome-Verschlüsselungs-Flag des Sensors gelöscht, und es ließ sich nicht automatisch wieder einschalten (vielleicht hat der Sensor den Schlüssel nicht mehr). Solange kann der BTHome-Eintrag von Home Assistant, der den Schlüssel kennt, den Sensor nicht lesen. Schalte sie mit der Aktion pvvx_ota.set_encryption und deinem bisherigen Schlüssel wieder ein (Entwicklerwerkzeuge > Aktionen). Die Meldung verschwindet von selbst, sobald ein Lesen die Verschlüsselung als eingeschaltet zeigt."
     },
     "settings_differ_after_flash": {
       "title": "{name}: Einstellungen weichen von vor dem Flash ab",

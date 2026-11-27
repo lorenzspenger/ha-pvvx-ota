@@ -102,6 +102,18 @@ class ConfigStore:
 
     @property
     def can_restore(self) -> bool:
+        """Settings differ from the snapshot, or the encryption flag that was on is off now."""
+        return self._fields_differ() or self._crypto_lost()
+
+    def _crypto_lost(self) -> bool:
+        """The snapshot had encryption on and the (known, verified) block has it off: restore may switch it on again."""
+        snap = self.snapshot
+        raw = self.raw
+        if not snap or not snap.get("crypto") or raw is None or not cfgmod.is_verified(raw):
+            return False
+        return self.available and cfgmod.get(raw, "adv_crypto") == 0
+
+    def _fields_differ(self) -> bool:
         """Needs only the stored snapshot. The settings are compared when the block is known; before the first read (no
         settings entity enabled) everything is written back, and the write starts from a fresh read anyway."""
         snap = self.snapshot
@@ -158,7 +170,7 @@ class ConfigStore:
             self._clear_issue("adv_type_changed")
         if cfgmod.get(raw, "adv_crypto") == 1:
             self._clear_issue("encryption_restore_failed")
-        if not self.can_restore:
+        if not self._fields_differ():
             self._clear_issue("settings_differ_after_flash")
         if self._matches_snapshot(raw):
             self._clear_issue("reset_defaults")
@@ -410,7 +422,7 @@ class ConfigStore:
 
     def _update_settings_issue(self) -> None:
         """Other settings are never re-applied automatically: a repair issue points at the Restore button."""
-        if self.can_restore:
+        if self._fields_differ():
             self._issue("settings_differ_after_flash")
         else:
             self._clear_issue("settings_differ_after_flash")
@@ -497,16 +509,13 @@ class ConfigStore:
         self.async_unwatch_bthome()
         if not self._encryption_issue_open():
             return
+        ent_reg = er.async_get(self.hass)
         device = find_bthome_device(self.hass, self.address, self.entry.entry_id)
-        if device is None:
-            return
-        ent_ids = [
-            e.entity_id
-            for e in er.async_entries_for_device(er.async_get(self.hass), device.id)
-            if e.platform == "bthome"
-        ]
-        if not ent_ids:
-            return
+        ent_ids = (
+            [e.entity_id for e in er.async_entries_for_device(ent_reg, device.id) if e.platform == "bthome"]
+            if device is not None
+            else []
+        )
 
         @callback
         def seen(event: Event[Any]) -> None:
@@ -518,12 +527,24 @@ class ConfigStore:
             self._clear_issue("encryption_changed")
             self.async_unwatch_bthome()
 
-        unsub_change = async_track_state_change_event(self.hass, ent_ids, seen)
-        unsub_report = async_track_state_report_event(self.hass, ent_ids, seen)  # same value again: only reported
+        @callback
+        def registry_changed(event: Event[Any]) -> None:
+            """A BTHome entity appeared (the BTHome entry was added again): watch it too."""
+            if event.data.get("action") != "create":
+                return
+            entry = ent_reg.async_get(event.data["entity_id"])
+            device = find_bthome_device(self.hass, self.address, self.entry.entry_id)
+            if entry and entry.platform == "bthome" and device is not None and entry.device_id == device.id:
+                self.async_watch_bthome()
+
+        unsubs = [self.hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, registry_changed)]
+        if ent_ids:
+            unsubs.append(async_track_state_change_event(self.hass, ent_ids, seen))
+            unsubs.append(async_track_state_report_event(self.hass, ent_ids, seen))  # same value again: only reported
 
         def unwatch() -> None:
-            unsub_change()
-            unsub_report()
+            for unsub in unsubs:
+                unsub()
 
         self._unwatch = unwatch
 
@@ -614,7 +635,9 @@ class ConfigStore:
             self.take_snapshot()  # the user may bring the old settings back with the restore button
             echoed = await send_command(client, b"\x56", 0x55)
         self.set_raw(echoed)
-        self._issue("reset_defaults", fixable=True)
+        snap = self.snapshot
+        if not self._matches_snapshot(echoed) or (snap and snap.get("crypto") and not cfgmod.get(echoed, "adv_crypto")):
+            self._issue("reset_defaults", fixable=True)  # not when the sensor already was at defaults
 
     async def async_reboot(self) -> None:
         """Command 0x72: the sensor reboots when the link drops (pvvx "Set Reboot on disconnect"). Settings are kept.
