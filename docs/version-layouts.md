@@ -19,7 +19,34 @@ Example board: hardware id 7 = CGG1-M 2022 (`DEVICE_CGG1` = 7, app_config.h:19-2
 
 TelinkMiFlasher: the page is not versioned per release (display-layouts.md); it treats every fw >= 4.8 the same (`hwver_id` is the raw `hw_ver` byte), so no 5.5-specific branch exists for these fields.
 
-Decision: 0x55 added to `VERIFIED_VERSIONS`; no per-version capability exclusion needed. 0x56 stays unverified (no tag, not compared). Not verified on hardware yet: a real V5.5 sensor has only been read, never written.
+Decision: 0x55 added to `VERIFIED_VERSIONS`; no per-version capability exclusion needed. 0x56 stays unverified (see the 5.6 section). Not verified on hardware yet: a real V5.5 sensor has only been read, never written.
+
+## 5.6 (0x56): config layout identical to 5.5, but NOT added to `VERIFIED_VERSIONS`: the bindkey does not survive a flash to 5.8/5.9
+
+Compared 2026-11-27 (read-only, nothing written to a sensor). 5.6 has no tag. Nine commits have `#define VERSION 0x56` (src/app_config.h:9), found by checking `app_config.h` at every commit between `v5.5` and `8e8b90c` (5.7): `c6b5e43` (2025-12-03, "start v5.6 beta"), `1394c2e` (12-06), `57b03a8` (12-09), `418dfed` and `7af7dd3` (2026-01-05), `32a99d9` (01-16), `2564ccf` (01-22), `e531ea7` (01-24), `e65881a` (01-31). `9ab5561` (2026-02-11) already has 0x57.
+
+| Item | `git diff v5.5 <commit> -- src` (all nine) |
+|---|---|
+| `cfg_t` (src/app.h), `flg`/`flg2`/`flg3`, `event_adv_cnt`, `hw_ver`, `VERSION < 0x47` branch (app.h:117) | `app.h` has no diff, so 5.6 equals 5.5 (and 5.5 equals 5.7 for the boards the integration offers fields for, see above) |
+| `CMD_ID_CFG` 0x55, `CMD_ID_CFS` 0x25 (`sensor_coef_t`, `sensor_cfg_send_size`), `CMD_ID_UTC_TIME` 0x23, `CMD_ID_PINCODE` 0x70, 0x18 bindkey, 0x56 reset, 0x72 reboot (all in src/cmd_parser.c), `ble_send_cfg` (src/ble.h), `sensor.h`, `cmd_parser.h` | no diff in `cmd_parser.c`, `ble.h`, `ble.c`, `sensor.h`, `cmd_parser.h` |
+| OTA path | the only `app_att.c` change (from `e531ea7`) adds the model/hardware strings of the new `DEVICE_ZBEACON2TH01` (id 47); the OTA services and the `DEV_SERVICES` of the existing boards are unchanged |
+| Display flag use per driver (`cfg.flg*` in `src/epd_*.c`, `src/lcd_*.c`), md5 of the grep without line numbers | identical to 5.5 and 5.7 |
+
+The only differences to 5.5 are: `lcd_lywsd03mmc.c` (hardware id 10 and the other LYWSD03MMC revisions: `lcd_send_spi`, `lcd_send_uart` and `init_lcd` only, i.e. detection of the SPI/UART panel at start; `cfg.flg2.screen_off` is used at lines 256/350/359 exactly as in 5.5 and 5.7), `app.c` (default config of the new `DEVICE_ZBEACON2TH01`, one `#elif` condition), `app_att.c` and `zb_version.h` (strings and the id of that new board), `app_config.h` (VERSION, the new board and a pull-up define for LYWSD03MMC pins), `sensors.c` (a comment). Boards 7 (CGG1-M) and 12/13 (MJWSD05MMC/06MMC) have no diff at all. The new board (id 47, no display, `USE_EPD 0`) is not in `DISPLAY_BY_HW`, so it gets no display fields.
+
+Version-dependent exclusions (`VERSION_EXCLUDED`: `screen_off` below 4.3, `not_day_of_week` below 4.9, `date_ddmm` below 5.4) and `capabilities_for` need no change: 5.6 is above all thresholds and has the 5.5 layout.
+
+### Bindkey and settings do not survive a flash from 5.6 (or 5.7, or 5.5) to 5.8/5.9
+
+Found 2026-11-27 after a real sensor went from a 5.6 beta build to 5.9 with BTHome encryption on: the flag was off afterwards and switching it on with `keep_key` made Home Assistant's BTHome report "Decryption failed". Compared `e65881a` (5.6), `v5.7` and `9b65a24` (5.9), read-only:
+
+- **Same in 5.6 and 5.9:** command 0x18 (`CMD_ID_BKEY`, cmd_parser.c:475-488: 16 bytes written to `bindkey` + `flash_write_cfg(&bindkey, EEP_ID_KEY, 16)`, then read back from the EEP, `0xff` if missing); `bindkey_init()` (app.c: `flash_read_cfg(bindkey, EEP_ID_KEY, 16)`, if absent `generateRandomNum` + write, no per-device or MAC derivation); BTHome v2 encryption (bthome_beacon.c: nonce = MAC (swapped public MAC) + UUID 0xFCD2 + info byte `BtHomeID_Info_Encrypt` + 32-bit counter, `aes_ccm_encrypt_and_tag(bindkey, ...)`, 4 byte MIC). The only bthome_beacon.c/.h/ccm.c hunks are new sensor fields (illuminance, BMP280 second temperature). The key and the cipher are not the problem.
+- **Different:** the EEPROM storage. 5.5-5.7 (`flash_eep.h`): 16-bit ids (`EEP_ID_KEY 0xBEAC`, `EEP_ID_CFG 0x0CFC`, `EEP_ID_VER 0x5555`), 4 byte record header (u16 size, u16 id). 5.8 (`9afe074`, 2026-05-04, "v5.8", the only commit touching `flash_eep.c/.h` after 5.5) rewrote it as "EEP Version 2.0": ids are an enum (`EEP_ID_VER` = 0 ... `EEP_ID_KEY` = 14), 1 byte id and 1 byte size per record. 5.8 and 5.9 are identical in this file.
+- **Effect:** at the first start of 5.8/5.9 `flash_supported_eep_ver()` does not find its version record in the new format and calls `flash_erase_all_cfg()` (all four 4 KiB sectors at 0x7C000 are erased; no migration code exists). Everything stored in the EEP is lost and the defaults apply: config block (`flg2` encryption flag off), bindkey (`bindkey_init` writes a NEW random key), pincode, trigger, comfort, time adjust, sensor coefficients. A key stored by 5.6 does NOT survive a flash to 5.8/5.9; the sensor then holds an unknown random key, so `keep_key` switches encryption on with a key that matches no BTHome entry.
+- The same break exists for 5.5 -> 5.8/5.9 and 5.7 -> 5.8/5.9 (already in `VERIFIED_VERSIONS`), and for a downgrade 5.8/5.9 -> 5.7 or older (the old code does not find its records either; `flash_supported_eep_ver` erases when the stored value is below the minimum or missing).
+- The integration's assumption "a flash clears the encryption flag but the key stays on the sensor" (store.py `_restore_encryption`, `require_stored_key`) is therefore wrong across the 5.7/5.8 boundary. Needed before 0x56 can be added: after a flash whose source is < 5.8 and target >= 5.8 (or the reverse), do not use `keep_key`; either write the key again (it is not kept by design) or tell the user the key is new and has to be entered in the BTHome entry, and restore the snapshot settings (they were reset to defaults too).
+
+Decision: 0x56 NOT added to `VERIFIED_VERSIONS`. Everything else compared above is identical to 5.5, so adding it needs only the cross-boundary handling described.
 
 ---
 
