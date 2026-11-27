@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.26.0-beta.2
+
+Git tag `v0.26.0-beta.2`, manifest version `0.26.0b2`.
 
 - **Clock diagnostics:** every clock read is logged at debug level with the sensor's time, its last-set time and the offset; the "clock set" line shows when the sensor was last set and whether it restarted since; one read-back about 2 s after a set warns when the sensor did not keep the time (not before a flash or reboot); diagnostics include the last clock read.
 
