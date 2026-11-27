@@ -169,3 +169,81 @@ async def test_the_version_read_leaves_the_clock_alone_when_auto_sync_is_off(
     await berlin(hass, freezer)
     writes, _ = await version_read_writes(hass, options={CONF_AUTO_CLOCK_SYNC: False})
     assert writes == []
+
+
+async def test_clock_read_and_last_set_are_logged(hass: HomeAssistant, enable_bluetooth, freezer, caplog):
+    caplog.set_level("DEBUG", logger="custom_components.pvvx_ota")
+    await berlin(hass, freezer)
+    client = FakeClient(cfg=SAMPLE)
+    client.last_set = 0
+    entry, calls, ctx = await setup_cfg_entry(hass, client)
+    try:
+        assert f"sensor time 0, last set never, offset {-TARGET} s" in caplog.text
+        assert f"clock set (it was {-TARGET} s off; sensor last set: never)" in caplog.text
+        assert "restarted" not in caplog.text  # this run had not set it before
+        assert entry.runtime_data.last_clock_read["offset_s"] == -TARGET
+        assert client.time_reads == 2  # the read and the read-back
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_restart_since_the_last_set_is_reported(hass: HomeAssistant, enable_bluetooth, freezer, caplog):
+    await berlin(hass, freezer)
+    client = FakeClient(cfg=SAMPLE)
+    client.last_set = 0
+    entry, calls, ctx = await setup_cfg_entry(hass, client)
+    try:
+        assert client.last_set == TARGET
+        client.reboot()
+        caplog.clear()
+        entity = hass.data["entity_components"]["update"].get_entity("update.atc_000001")
+        await entity._async_read_device()
+        assert "sensor last set: never; sensor restarted since the last set" in caplog.text
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_four_byte_reply_reports_not_reported(hass: HomeAssistant, enable_bluetooth, freezer, caplog):
+    await berlin(hass, freezer)
+    client = FakeClient(cfg=SAMPLE)  # no last_set field
+    entry, calls, ctx = await setup_cfg_entry(hass, client)
+    try:
+        assert "sensor last set: not reported)" in caplog.text
+        assert entry.runtime_data.last_clock_read["last_set"] is None
+        assert "did not keep" not in caplog.text
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_readback_mismatch_warns(hass: HomeAssistant, enable_bluetooth, freezer, caplog):
+    await berlin(hass, freezer)
+    client = FakeClient(cfg=SAMPLE)
+    client.drop_set = True
+    entry, calls, ctx = await setup_cfg_entry(hass, client)
+    try:
+        assert f"clock did not keep the set time (read back {1_000_000 - TARGET} s off)" in caplog.text
+        assert len(client.time_writes) == 1  # no retry loop
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_readback_skipped_before_flash_and_reboot(hass: HomeAssistant, enable_bluetooth):
+    from unittest.mock import patch as p
+
+    client = FakeClient(cfg=SAMPLE[:11] + bytes([0, 0]))
+    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0)
+    try:
+        client.device_time = 0
+        client.time_reads = 0
+        with p("custom_components.pvvx_ota.store.REBOOT_WATCH", 0.0):
+            await entry.runtime_data.async_reboot()
+        assert len(client.time_writes) >= 1 and client.time_reads == 1  # the diff read only
+        client.device_time = 0
+        client.time_reads = 0
+        with p("custom_components.pvvx_ota.update.async_call_later"):
+            await hass.services.async_call(
+                "pvvx_ota", "flash_latest", {"entity_id": "update.atc_000001"}, blocking=True
+            )
+        assert client.time_reads == 1
+    finally:
+        [c.stop() for c in ctx]

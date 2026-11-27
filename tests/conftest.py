@@ -20,6 +20,12 @@ def no_grace(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_clock_readback_wait(monkeypatch):
+    """No 2 s wait before the clock read-back in tests."""
+    monkeypatch.setattr("custom_components.pvvx_ota.store.CLOCK_READBACK_DELAY", 0)
+
+
+@pytest.fixture(autouse=True)
 def no_history_fetch(monkeypatch):
     """Release notes come from pvvx's README over the network: none in tests unless a test patches it."""
 

@@ -11,6 +11,21 @@ from custom_components.pvvx_ota.ota import CFG_CHAR, OTA_CHAR
 
 
 class FakeClient:
+    @property
+    def device_time(self) -> int:
+        return self._clock_base + int(self.time_source() - self._clock_set_at)
+
+    @device_time.setter
+    def device_time(self, value: int) -> None:
+        self._clock_base = value
+        self._clock_set_at = self.time_source()
+
+    def reboot(self, stale: int = 1_000_000) -> None:
+        """Sensor restart: the clock falls back to a stale value (last history record) and last_set to 0."""
+        self.device_time = stale
+        if self.last_set is not None:
+            self.last_set = 0
+
     def __init__(
         self,
         cfg: bytes | None = None,
@@ -39,7 +54,12 @@ class FakeClient:
         # SHTC3 factory coefficients: Tk 17500, Hk 10000, Tz -45.00, Hz 0, id, i2c 0x70, chip type 1
         self.coef = struct.pack("<IIhhIBB", 17500, 10000, -4500, 0, 0x12345678, 0x70, 1)
         self.coef_writes: list[bytes] = []
-        self.device_time = 0
+        self.time_source = time.time  # controllable: the sensor clock ticks with it
+        self._clock_base = 0
+        self._clock_set_at = self.time_source()
+        self.time_reads = 0
+        self.drop_set = False  # the sensor echoes a set but does not keep it (restores a stale clock)
+        self.last_set: int | None = None  # None: 4-byte reply (no TIME_ADJUST); an int adds the 4-byte last-set time
         self.time_writes: list[bytes] = []
         self.no_clock_reply = False
         self.key_writes = 0
@@ -115,8 +135,17 @@ class FakeClient:
                 if len(data) >= 5:
                     self.time_writes.append(bytes(data))
                     self.device_time = int.from_bytes(data[1:5], "little")
+                    if self.last_set is not None:
+                        self.last_set = self.device_time
+                else:
+                    self.time_reads += 1
                 if not self.no_clock_reply:
-                    self._cb(char, bytearray(b"\x23" + self.device_time.to_bytes(4, "little")))
+                    reply = b"\x23" + self.device_time.to_bytes(4, "little")
+                    if self.last_set is not None:
+                        reply += self.last_set.to_bytes(4, "little")
+                    self._cb(char, bytearray(reply))
+                if len(data) >= 5 and self.drop_set:
+                    self.reboot()
                 return
             if data[:1] == b"\x25":  # sensor coefficients: get (no payload) / set (12 bytes), reply 0x25 + 18 bytes
                 if len(data) > 1:

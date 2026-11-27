@@ -9,6 +9,7 @@ import secrets
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Any
 
 from bleak_retry_connector import BleakClientWithServiceCache
@@ -51,6 +52,8 @@ REBOOT_REPLY_TIMEOUT = 5.0
 REBOOT_QUIET = 30.0  # s without other connections after the reboot command
 REBOOT_WATCH = 30.0  # s to look for the first advertisement afterwards (log only)
 CLOCK_TIMEOUT = 5.0
+CLOCK_READBACK_DELAY = 2.0  # seconds between a clock set and the one read-back
+CLOCK_READBACK_TOLERANCE = 3  # seconds the read-back may differ from the expected time
 CALIB_TIMEOUT = 5.0
 BATCH_WINDOW = 2.0  # seconds: changes arriving within this window share one connection
 
@@ -84,6 +87,8 @@ class ConfigStore:
             None  # set by the update entity (same path as Install)
         )
         self.last_clock: dict[str, Any] | None = None  # what the last clock sync did (diagnostics)
+        self.last_clock_read: dict[str, Any] | None = None  # the last clock read (diagnostics)
+        self._last_clock_set: datetime | None = None  # when this run last set the sensor's clock (memory only)
         self.calib: calibmod.Coef | None = None  # sensor coefficients (command 0x25), None if not readable here
         self.last_flash: dict[str, Any] | None = None  # timings/result of the last flash (diagnostics)
         self.quiet_until = 0.0  # event-loop time until which nothing else should connect (sensor is rebooting)
@@ -290,12 +295,45 @@ class ConfigStore:
     def auto_clock_sync(self) -> bool:
         return bool(self.entry.options.get(CONF_AUTO_CLOCK_SYNC, True))
 
-    async def _sync_clock(self, client: Any, force: bool = False) -> bool:
+    @staticmethod
+    def _fmt_last_set(last: int | None) -> str:
+        if last is None:
+            return "not reported"
+        if last == 0:
+            return "never"
+        return datetime.fromtimestamp(last, UTC).strftime("%H:%M:%S")  # the sensor counts local wall-clock seconds
+
+    async def _read_back_clock(self, client: Any) -> None:
+        """One read in the same connection a moment after a set: warns when the sensor did not keep the time. Never fatal."""
+        try:
+            await asyncio.sleep(CLOCK_READBACK_DELAY)
+            current = clockmod.parse(await send_command(client, b"\x23", 0x23, timeout=CLOCK_TIMEOUT)).current
+            off = current - clockmod.local_epoch(dt_util.now())
+        except (OtaError, clockmod.ClockError) as err:
+            _LOGGER.debug("%s: clock read-back skipped: %s", self.name, err)
+            return
+        if abs(off) > CLOCK_READBACK_TOLERANCE:
+            _LOGGER.warning("%s: clock did not keep the set time (read back %s s off)", self.name, off)
+        else:
+            _LOGGER.debug("%s: clock read back %s s off after the set", self.name, off)
+
+    async def _sync_clock(self, client: Any, force: bool = False, verify: bool = True) -> bool:
         """Set the sensor's clock to the local time (what TelinkMiFlasher sends, see clock.py); without ``force`` only when
-        it is more than AUTO_TOLERANCE seconds off. Returns whether a write happened. Raises OtaError/ClockError."""
+        it is more than AUTO_TOLERANCE seconds off. Returns whether a write happened. Raises OtaError/ClockError.
+        ``verify`` adds one read about CLOCK_READBACK_DELAY seconds after a set."""
         target = clockmod.local_epoch(dt_util.now())
-        before = clockmod.parse(await send_command(client, b"\x23", 0x23, timeout=CLOCK_TIMEOUT)).current
+        reading = clockmod.parse(await send_command(client, b"\x23", 0x23, timeout=CLOCK_TIMEOUT))
+        before = reading.current
         diff = before - target
+        last_text = self._fmt_last_set(reading.last_set)
+        restarted = reading.last_set == 0 and self._last_clock_set is not None
+        self.last_clock_read = {
+            "at": dt_util.utcnow().isoformat(),
+            "sensor_time": before,
+            "last_set": reading.last_set,
+            "offset_s": diff,
+        }
+        _LOGGER.debug("%s: clock read: sensor time %s, last set %s, offset %s s", self.name, before, last_text, diff)
         if not force and abs(diff) <= clockmod.AUTO_TOLERANCE:
             _LOGGER.debug("%s: clock is %s s off, left alone", self.name, diff)
             return False
@@ -304,16 +342,26 @@ class ConfigStore:
         ).current
         if abs(after - target) > clockmod.AUTO_TOLERANCE:
             raise clockmod.ClockError(f"the sensor reports {after} after being set to {target}")
-        self.last_clock = {"at": dt_util.utcnow().isoformat(), "was_off_s": diff, "forced": force}
-        _LOGGER.info("%s: clock set (it was %s s off)", self.name, diff)
+        self._last_clock_set = dt_util.utcnow()
+        self.last_clock = {"at": self._last_clock_set.isoformat(), "was_off_s": diff, "forced": force}
+        _LOGGER.info(
+            "%s: clock set (it was %s s off; sensor last set: %s%s)",
+            self.name,
+            diff,
+            last_text,
+            "; sensor restarted since the last set" if restarted else "",
+        )
+        if verify:
+            await self._read_back_clock(client)
         return True
 
-    async def _auto_clock(self, client: Any, raw: bytes) -> None:
-        """Automatic sync inside a connection that is open anyway: never fatal, only where the layout is verified."""
+    async def _auto_clock(self, client: Any, raw: bytes, verify: bool = True) -> None:
+        """Automatic sync inside a connection that is open anyway: never fatal, only where the layout is verified.
+        ``verify=False`` skips the read-back (connections that must not be held up, like the one before a flash)."""
         if not self.auto_clock_sync or not cfgmod.is_verified(raw):
             return
         try:
-            await self._sync_clock(client)
+            await self._sync_clock(client, verify=verify)
         except (OtaError, clockmod.ClockError) as err:
             _LOGGER.debug("%s: automatic clock sync skipped: %s", self.name, err)
 
@@ -849,7 +897,9 @@ class ConfigStore:
         async with self._session() as client:
             raw = await read_cfg_raw(client)  # same authentication rules as every other command
             self.set_raw(raw)
-            await self._auto_clock(client, raw)  # the sensor restarts right after this connection: set its clock first
+            await self._auto_clock(
+                client, raw, verify=False
+            )  # the sensor restarts right after this connection: set its clock first
             try:
                 await send_command(client, b"\x72", 0x72, timeout=REBOOT_REPLY_TIMEOUT)
             except OtaError as err:
