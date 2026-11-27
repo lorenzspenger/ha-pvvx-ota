@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.26.0-beta.5
+
+Git tag `v0.26.0-beta.5`, manifest version `0.26.0b5`.
 
 - **The pairing package has a watchdog and a `pvvx_clear_pin` action:** a pairing run that hangs is stopped after 90 s (result `timeout`) and the pairer is free again; the integration retries once, like *no connection*. `pvvx_clear_pin(mac, pin)` is an experimental rescue for a sensor whose pairing is broken, documented in `docs/pin-sensors.md`.
 - **The pairing package reports a version** (*pvvx package version* diagnostic sensor). An older or missing version logs one warning per proxy and raises the *pairing package out of date* repair issue, which clears when a later pairing finds the current version.
