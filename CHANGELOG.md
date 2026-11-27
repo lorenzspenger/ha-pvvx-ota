@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.26.0-beta.4
+
+Git tag `v0.26.0-beta.4`, manifest version `0.26.0b4`.
 
 - **Diagnostics hide Bluetooth addresses and user-chosen names:** addresses keep only their last three bytes (`XX:XX:XX:0A:CF:E5`), proxies are `proxy_N`, devices `device_N`, the entry title `sensor` and entity ids `<domain>.<key>`; PINs and keys stay redacted.
 
