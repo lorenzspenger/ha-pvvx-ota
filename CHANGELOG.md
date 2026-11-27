@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.26.0-dev.1
+
+Git tag `v0.26.0-dev.1`, manifest version `0.26.0.dev1`. Test build from the `feat/specific-version` branch; not for general use.
 
 - **Install a specific firmware version, including an older one:** `update.install` accepts `version` (for example `5.7`), `pvvx_ota.flash_latest` has a new `version` field.
 - **Only verified releases 4.2 to 5.9 with an image for the sensor's board are accepted**, and not older than the firmware that knows the sensor's hardware id; a refusal lists the allowed versions.
