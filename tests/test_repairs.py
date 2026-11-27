@@ -332,9 +332,12 @@ async def test_restore_is_offered_when_only_the_encryption_flag_was_lost(
         assert not store.can_restore
         store.take_snapshot()
         client.cfg = SAMPLE[:2] + cfg.apply(client.cfg, {"adv_crypto": 0}, 10, frozenset({"adv_crypto"}))
+        store._issue("reset_defaults", fixable=True)
         await store.async_refresh()
         assert store.can_restore and issue(hass, entry, "settings_differ_after_flash") is None
+        assert issue(hass, entry, "reset_defaults")  # a read with encryption still off keeps it
         await store.async_restore()
+        assert issue(hass, entry, "reset_defaults") is None
         assert cfg.get(client.cfg, "adv_crypto") == 1 and not store.can_restore
     finally:
         [c.stop() for c in ctx]

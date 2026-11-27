@@ -172,7 +172,7 @@ class ConfigStore:
             self._clear_issue("encryption_restore_failed")
         if not self._fields_differ():
             self._clear_issue("settings_differ_after_flash")
-        if self._matches_snapshot(raw):
+        if self._matches_snapshot(raw) and not self._crypto_lost():  # encryption off again is still part of the reset
             self._clear_issue("reset_defaults")
 
     def _matches_snapshot(self, raw: bytes | None) -> bool:
