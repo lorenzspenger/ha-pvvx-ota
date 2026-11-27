@@ -91,7 +91,11 @@ _SCHEMAS: dict[str, dict[Any, Any]] = {
         vol.Optional("status_every", default=8): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
         vol.Optional("force", default=False): cv.boolean,
     },
-    "set_encryption": {vol.Required("enable"): cv.boolean, vol.Optional("key"): cv.string},
+    "set_encryption": {
+        vol.Required("enable"): cv.boolean,
+        vol.Optional("key"): cv.string,
+        vol.Optional("keep_key", default=False): cv.boolean,
+    },
     "set_pin": {
         vol.Required("pin"): vol.All(vol.Coerce(int), vol.Range(min=0, max=999999)),
         vol.Optional("confirm", default=False): cv.boolean,
@@ -686,9 +690,11 @@ class PvvxUpdateEntity(UpdateEntity):
         self._quiet_until = asyncio.get_running_loop().time() + POST_FLASH_QUIET
         self._schedule_verify()
 
-    async def async_set_encryption(self, enable: bool, key: str | None = None) -> dict[str, Any]:
+    async def async_set_encryption(
+        self, enable: bool, key: str | None = None, keep_key: bool = False
+    ) -> dict[str, Any]:
         """Entity service. The bindkey is returned in the response data only (never state, attributes or log)."""
-        return await self._store_cfg.async_set_encryption(enable, key)
+        return await self._store_cfg.async_set_encryption(enable, key, keep_key)
 
     async def async_set_pin(self, pin: int, confirm: bool = False) -> dict[str, Any]:
         """Entity service. With a PIN set, HA's Bluetooth stack/proxies (and so this integration) cannot connect any more."""

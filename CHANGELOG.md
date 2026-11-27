@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **`pvvx_ota.set_encryption` has a new `keep_key` option** that switches encryption on with the key the sensor still holds, without needing to know it.
+
 ## 0.25.0-beta.3
 
 Git tag `v0.25.0-beta.3`, manifest version `0.25.0b3`.

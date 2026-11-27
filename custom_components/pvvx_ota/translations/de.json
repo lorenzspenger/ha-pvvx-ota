@@ -99,6 +99,10 @@
         "key": {
           "name": "Schlüssel",
           "description": "Optional 32 Hex-Zeichen (16 Byte). Wird erzeugt, wenn leer."
+        },
+        "keep_key": {
+          "name": "Schlüssel behalten",
+          "description": "Nur mit Aktivieren und ohne Schlüssel: schaltet nur das Flag ein und lässt den Schlüssel, den der Sensor noch gespeichert hat, unverändert (z. B. nach einem Flash, wenn du ihn nicht kennst). Der BTHome-Eintrag behält seinen Schlüssel. Beim Ausschalten ohne Wirkung."
         }
       }
     },
@@ -192,6 +196,9 @@
     },
     "bad_key": {
       "message": "Der Schlüssel muss aus 32 Hexadezimalzeichen (16 Bytes) bestehen."
+    },
+    "keep_key_with_key": {
+      "message": "Schlüssel behalten und ein Schlüssel schließen sich aus: lass das Schlüsselfeld leer, wenn der Sensor seinen Schlüssel behalten soll."
     },
     "key_not_accepted": {
       "message": "{name}: Der Sensor hat den Schlüssel nicht angenommen. Dieses Board unterstützt vielleicht keine verschlüsselten Advertisements."

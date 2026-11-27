@@ -50,6 +50,11 @@ set_encryption:
       required: false
       selector:
         text:
+    keep_key:
+      required: false
+      default: false
+      selector:
+        boolean:
 
 set_pin:
   target:

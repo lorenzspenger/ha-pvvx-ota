@@ -2,6 +2,7 @@
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.setup import async_setup_component
@@ -420,5 +421,61 @@ async def test_an_inactive_leftover_encryption_issue_is_not_watched(hass: HomeAs
         object.__setattr__(found, "active", False)  # what a non-persistent issue of an older version loads as
         entry.runtime_data.async_watch_bthome()
         assert entry.runtime_data._unwatch is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def keep_key_call(hass, **extra):
+    return await hass.services.async_call(
+        DOMAIN,
+        "set_encryption",
+        {"entity_id": UPDATE, "enable": True, "keep_key": True, **extra},
+        blocking=True,
+        return_response=True,
+    )
+
+
+@pytest.mark.parametrize("flag_on,raised", [(False, True), (True, False)])
+async def test_keep_key_switches_only_the_flag_on(
+    hass: HomeAssistant, enable_bluetooth, fast_batch, caplog, flag_on, raised
+):
+    caplog.set_level("DEBUG")
+    stored = bytes(range(1, 17))
+    client = crypto_client(False, stored)
+    client.cfg = SAMPLE[:2] + cfg.apply(SAMPLE, {"adv_crypto": int(flag_on)}, 10, frozenset({"adv_crypto"}))
+    client.bindkey = stored
+    entry, calls, ctx = await setup_cfg_entry(hass, client)
+    try:
+        entry.runtime_data._issue("encryption_restore_failed")
+        res = (await keep_key_call(hass))[UPDATE]
+        assert res["encryption"] is True and "bindkey" not in res and "BTHome" in res["note"]
+        assert cfg.get(client.cfg, "adv_crypto") == 1 and client.bindkey == stored
+        assert stored.hex() not in caplog.text and stored.hex() not in str(res)
+        assert bool(issue(hass, entry, "encryption_changed")) is raised
+        assert not issue(hass, entry, "encryption_restore_failed")
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_keep_key_without_a_stored_key_changes_nothing(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    client = crypto_client(False)
+    entry, calls, ctx = await setup_cfg_entry(hass, client)
+    try:
+        with pytest.raises(HomeAssistantError, match="no encryption key"):
+            await keep_key_call(hass)
+        assert cfg.get(client.cfg, "adv_crypto") == 0 and client.bindkey == bytes(16)
+        assert not issue(hass, entry, "encryption_changed")
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_keep_key_together_with_a_key_is_refused(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    client = crypto_client(False)
+    client.bindkey = bytes(range(1, 17))
+    entry, calls, ctx = await setup_cfg_entry(hass, client)
+    try:
+        with pytest.raises(ServiceValidationError, match="exclude each other"):
+            await keep_key_call(hass, key=KEY)
+        assert cfg.get(client.cfg, "adv_crypto") == 0 and client.bindkey == bytes(range(1, 17))
     finally:
         [c.stop() for c in ctx]

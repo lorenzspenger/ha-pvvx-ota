@@ -52,6 +52,14 @@ CALIB_TIMEOUT = 5.0
 BATCH_WINDOW = 2.0  # seconds: changes arriving within this window share one connection
 
 
+async def require_stored_key(client: BleakClientWithServiceCache) -> None:
+    """Read-only check (command 0x18 alone) that the sensor still holds a key; a missing one answers 0xff or zeros.
+    The key itself is never kept, returned or logged."""
+    reply = await send_command(client, b"\x18", 0x18, log=False)
+    if len(reply) < 17 or set(reply[1:17]) <= {0, 0xFF}:
+        raise ha_error("encryption_key_gone")
+
+
 class ConfigStore:
     """Holds what we know of one sensor's configuration. Never polls: reads happen at setup, after a flash
     and on the refresh button."""
@@ -446,10 +454,7 @@ class ConfigStore:
                     echoed = raw
                 else:
                     payload = cfgmod.apply(raw, {"adv_crypto": 1}, hw, frozenset({"adv_crypto"}))
-                    # read-only check that the sensor still holds a key (a missing one answers 0xff, the key is not kept)
-                    reply = await send_command(client, b"\x18", 0x18, log=False)
-                    if len(reply) < 17 or set(reply[1:17]) <= {0, 0xFF}:
-                        raise ha_error("encryption_key_gone")
+                    await require_stored_key(client)
                     echoed = await write_cfg(client, payload)
             if cfgmod.get(echoed, "adv_crypto") != 1:
                 raise ha_error("encryption_not_switched_on", name=self.name)
@@ -575,9 +580,15 @@ class ConfigStore:
             except (OtaError, cfgmod.ConfigError) as err:
                 raise ha_error("sensor_error", name=self.name, error=err) from err
 
-    async def async_set_encryption(self, enable: bool, key: str | None = None) -> dict[str, Any]:
+    async def async_set_encryption(
+        self, enable: bool, key: str | None = None, keep_key: bool = False
+    ) -> dict[str, Any]:
         """Switch encrypted adverts on/off. The key goes out only in the returned dict: never log it,
-        never put it in state or attributes. The BTHome config entry is not touched."""
+        never put it in state or attributes. The BTHome config entry is not touched.
+        keep_key (with enable, no key): only the flag is set, the key already on the sensor stays; ignored when switching off."""
+        keep_key = keep_key and enable
+        if keep_key and key is not None:
+            raise validation_error("keep_key_with_key")
         if key is not None and not re.fullmatch(r"[0-9a-fA-F]{32}", key):
             raise validation_error("bad_key")
         async with self._session() as client:
@@ -587,7 +598,9 @@ class ConfigStore:
             payload = cfgmod.apply(raw, {"adv_crypto": int(enable)}, hw, frozenset({"adv_crypto"}))
             bindkey = None
             changed = cfgmod.get(raw, "adv_crypto") != int(enable)
-            if enable:
+            if keep_key:
+                await require_stored_key(client)
+            elif enable:
                 bindkey = bytes.fromhex(key) if key else secrets.token_bytes(16)
                 current = await send_command(client, b"\x18", 0x18, log=False)  # read-only: the key now on the sensor
                 changed = changed or current[1:17] != bindkey
@@ -604,7 +617,11 @@ class ConfigStore:
             self._issue("encryption_changed")
             self.async_watch_bthome()
         result: dict[str, Any] = {"encryption": enable}
-        if bindkey is not None:
+        if keep_key:
+            result["note"] = (
+                "Encryption switched on with the key already on the sensor; the BTHome entry keeps its key."
+            )
+        elif bindkey is not None:
             result["bindkey"] = bindkey.hex()
             result["note"] = (
                 "Enter this key in Home Assistant's BTHome entry for this sensor; it is not stored anywhere else."

@@ -99,6 +99,10 @@
         "key": {
           "name": "Key",
           "description": "Optional 32 hex characters (16 bytes). Generated if empty."
+        },
+        "keep_key": {
+          "name": "Keep key",
+          "description": "Only with Enable and no key: switches only the flag on and leaves the key the sensor still holds untouched (for example after a flash, when you do not know it). The BTHome entry keeps its key. No effect when switching off."
         }
       }
     },
@@ -192,6 +196,9 @@
     },
     "bad_key": {
       "message": "The key must be 32 hexadecimal characters (16 bytes)."
+    },
+    "keep_key_with_key": {
+      "message": "Keep key and a key exclude each other: leave the key empty to keep the key the sensor holds."
     },
     "key_not_accepted": {
       "message": "{name}: the sensor did not accept the key. This board may not support encrypted advertisements."
