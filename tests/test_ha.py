@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager, contextmanager
 from unittest.mock import patch
 
 import pytest
+import voluptuous as vol
 from bleak.backends.device import BLEDevice
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.config_entries import SOURCE_BLUETOOTH, SOURCE_USER
@@ -302,6 +303,12 @@ async def test_flash_file_board_mismatch_and_allowlist(hass: HomeAssistant, enab
                 DOMAIN, "flash_file", {"entity_id": ENTITY, "path": str(good)}, blocking=True
             )
     assert client.writes[-1][:2] == b"\x02\xff"
+
+
+async def test_flash_latest_rejects_the_removed_status_every_field(hass: HomeAssistant, enable_bluetooth):
+    await setup_entry(hass, FakeClient())
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(DOMAIN, "flash_latest", {"entity_id": ENTITY, "status_every": 16}, blocking=True)
 
 
 async def test_a_second_flash_waits_for_the_lock_instead_of_being_refused(hass: HomeAssistant, enable_bluetooth):

@@ -18,7 +18,7 @@ Which of them exist depends on the sensor's firmware and board ([supported-devic
 
 ## Actions
 
-* `pvvx_ota.flash_latest`: flash the latest release even if the sensor is up to date, or a chosen version with `version` (also older ones); fields `force` and `status_every`.
+* `pvvx_ota.flash_latest`: flash the latest release even if the sensor is up to date, or a chosen version with `version` (also older ones); field `force`.
 * `pvvx_ota.flash_file`: flash a local `.bin` (options `force` for the battery check and `skip_board_check`).
 * `pvvx_ota.set_encryption`: switch BTHome advert encryption on or off (returns the key it set).
 * `pvvx_ota.set_pin`: set or clear a PIN (needs `confirm: true`).

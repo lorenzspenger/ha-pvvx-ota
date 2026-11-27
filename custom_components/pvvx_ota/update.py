@@ -96,7 +96,6 @@ _SCHEMAS: dict[str, dict[Any, Any]] = {
         vol.Optional("skip_board_check", default=False): cv.boolean,
     },
     "flash_latest": {
-        vol.Optional("status_every", default=8): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
         vol.Optional("force", default=False): cv.boolean,
         vol.Optional("version"): cv.string,
     },
@@ -520,10 +519,9 @@ class PvvxUpdateEntity(UpdateEntity):
         """Install the latest release image for this device's board, or the release named in ``version`` (also older ones)."""
         await self._async_flash(None, None, wanted=await self._async_wanted(version))
 
-    async def async_flash_latest(self, status_every: int = 8, force: bool = False, version: str | None = None) -> None:
-        """Entity service: flash the latest release (even if up to date) with a tunable status interval; ``version`` names
-        another release instead."""
-        await self._async_flash(None, None, status_every, force, wanted=await self._async_wanted(version))
+    async def async_flash_latest(self, force: bool = False, version: str | None = None) -> None:
+        """Entity service: flash the latest release (even if up to date); ``version`` names another release instead."""
+        await self._async_flash(None, None, force=force, wanted=await self._async_wanted(version))
 
     def _pin(self, wanted: int, hw_id: int | None, catalog: Catalog) -> Pin:
         """The pinned image of a release for this sensor, or a validation error naming the releases that are allowed."""
@@ -666,7 +664,6 @@ class PvvxUpdateEntity(UpdateEntity):
         self,
         local: bytes | None,
         filename: str | None,
-        status_every: int = 8,
         force: bool = False,
         skip_board_check: bool = False,
         wanted: int | None = None,
@@ -759,7 +756,6 @@ class PvvxUpdateEntity(UpdateEntity):
                         client,
                         fw,
                         self._set_progress,
-                        status_every=status_every,
                         connected_at=t_conn,
                         context=f"connected via {record['link']}",
                     )

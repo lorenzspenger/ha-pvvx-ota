@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Breaking: `pvvx_ota.flash_latest` no longer has the `status_every` field**; the status is read after every 8th block.
+
 ## 0.26.0-beta.5
 
 Git tag `v0.26.0-beta.5`, manifest version `0.26.0b5`.

@@ -305,11 +305,12 @@ async def test_download_reads_whole_body():
     assert await FirmwareSource(Session()).async_download("bin/ATC_v59.bin") == fw
 
 
-async def test_status_every_is_tunable():
+async def test_status_is_read_every_eighth_block_by_default():
+    assert ota.OTA_STATUS_EVERY == 8
     c = FakeClient()
-    await ota.flash(c, image(1000), status_every=32)
+    await ota.flash(c, image(1000))
     n = -(-len(image(1000)) // 16)
-    assert c.status_reads == n // 32 + 1
+    assert c.status_reads == n // 8 + 1
 
 
 async def test_refused_read_means_pin_and_no_pairing_is_attempted():

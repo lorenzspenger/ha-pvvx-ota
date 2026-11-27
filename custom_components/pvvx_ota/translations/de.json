@@ -76,12 +76,8 @@
     },
     "flash_latest": {
       "name": "Neueste oder gewählte Version flashen",
-      "description": "Flasht das neueste Release-Image für diesen Sensor, auch wenn er schon aktuell ist, oder das unter Version genannte Release (auch ein älteres). Mit status_every stellst du ein, wie oft der Status gelesen wird, und force übergeht die Batterieprüfung.",
+      "description": "Flasht das neueste Release-Image für diesen Sensor, auch wenn er schon aktuell ist, oder das unter Version genannte Release (auch ein älteres). Mit force übergehst du die Batterieprüfung.",
       "fields": {
-        "status_every": {
-          "name": "Statusintervall",
-          "description": "Anzahl Blöcke zwischen zwei Statusabfragen (Standard 8). Größer ist schneller, wenn Sensor und Proxy mithalten; zu groß lässt verlorene Blöcke den Flash abbrechen."
-        },
         "force": {
           "name": "Erzwingen",
           "description": "Auch flashen, wenn die Batteriespannung unter 2,5 V liegt."

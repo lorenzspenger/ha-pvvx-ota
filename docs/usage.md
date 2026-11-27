@@ -151,7 +151,7 @@ All actions are admin only and target the sensor's update entity.
 
 | Action | Fields | What it does |
 |---|---|---|
-| `pvvx_ota.flash_latest` | `version` (optional, for example `"5.7"`), `force` (default false), `status_every` (1 to 64, default 8) | Flashes the latest release even if up to date, or the named one. `status_every` is the number of blocks between status reads: larger is faster if sensor and proxy keep up, too large makes lost blocks abort the flash |
+| `pvvx_ota.flash_latest` | `version` (optional, for example `"5.7"`), `force` (default false) | Flashes the latest release even if up to date, or the named one |
 | `pvvx_ota.flash_file` | `path` (required), `force` (default false), `skip_board_check` (default false) | Flashes a local file, see *A local file* |
 | `pvvx_ota.set_encryption` | `enable` (required), `key` (optional, 32 hex characters), `keep_key` (default false) | See below |
 | `pvvx_ota.set_pin` | `pin` (0 to 999999, 0 = off), `confirm` (must be true) | See below |
@@ -219,7 +219,7 @@ While a sensor is being added, a failed pairing leaves a *could not be paired wi
 | One GATT write or configuration command | 10 s |
 | Whole flash | 90 minutes |
 | Image size | at most 128 KiB (BLE OTA); larger images need the web flasher |
-| Data blocks | 16 bytes, write without response, a status read every 8 blocks (`status_every`) |
+| Data blocks | 16 bytes, write without response, a status read every 8 blocks |
 | Slow-link stop | below 15 blocks/s, judged after the first 3 s of data |
 | After the end marker | the sensor must drop the link; a link that stays up and silent for 10 s ends the flash as unconfirmed, a sensor that keeps answering with status 0 for about 8 s did not reboot |
 | Quiet period after a flash or a reboot | 30 s |

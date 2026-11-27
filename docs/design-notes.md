@@ -28,10 +28,26 @@ The first implementation needed about 130 to 145 ms per 16-byte block (about 7 b
 
 - The sensor requests 20 ms interval and latency 49 about 1 s after connecting (`ble.c`); Bluedroid on the proxy accepts that request, which overrides the proxy's own 7.5/10 ms parameters. Latency 49 turns off during OTA only on the sensor side.
 - **Asking the proxy for fast parameters after that request** (`set_connection_params(6, 6, 0, 600)`: 7.5 ms, latency 0) made a flash about 8 times faster. It is requested right before the OTA start, again about 2 s after the connect and once after the start command. Failures or missing support (proxies before ESPHome 2026.10) are logged and ignored.
-- Data blocks go out as write-without-response with a status read every 8 blocks (`ota.DATA_RESPONSE`, `ota.STATUS_EVERY`). Error 143 on a write is congestion on the proxy side and is absorbed by the status reads and the device's index/CRC checks.
+- Data blocks go out as write-without-response with a status read every 8 blocks (`ota.DATA_RESPONSE`, `ota.OTA_STATUS_EVERY`). Error 143 on a write is congestion on the proxy side and is absorbed by the status reads and the device's index/CRC checks.
 - With 7.5 ms the steady state is about 12.7 ms per block (60 to 80 blocks/s), i.e. a flash of about 5,350 blocks takes roughly 70 to 95 s. TelinkMiFlasher measured 25 to 45 ms per block in a browser.
 - Short periodic dips (a few hundred ms) remain. Candidates: the sensor's flash page erase every 4 KiB (every 256 blocks) and the proxy's scan duty cycle / Wi-Fi coexistence (`connection_scan_window` lower on the proxy may help). Not settled.
 - **Weak links are uniformly slow, not dippy**: a sensor at -78 dBm through a far proxy ran at 2 blocks/s (about 460 ms/block) and would have needed over 40 minutes. Hence the **throughput probe**: after the first windows, fewer than about 15 blocks/s means the fast parameters are requested once more; if it is still that slow the flash is stopped before the end marker, so the sensor keeps its old firmware and the battery is not wasted. A PIN sensor cannot switch to a closer proxy (its bond is on one proxy); re-pair it through a closer proxy instead.
+
+## Status read interval
+
+The status is read after every 8th block, as pvvx's TelinkMiFlasher does (`ota.OTA_STATUS_EVERY`, not configurable). Measured on one sensor (board TS0201) through one ESPHome proxy at -75 to -91 dBm:
+
+| Blocks between status reads | Result |
+| --- | --- |
+| 8 | 113 s |
+| 10 | 103 s |
+| 12 | 87 s |
+| 16 | aborted after 22 s ("status read timed out") |
+
+- Status reads take about 99 % of the transfer time (about 0.18 s each).
+- 16 and 32 also failed in the original tuning.
+- 8 is kept because pvvx's TelinkMiFlasher uses it.
+- Before a proxy restart, the same proxy aborted five flashes with "status read timed out" at -49 to -84 dBm; after the restart all runs at 8 to 12 worked.
 
 ## Development
 The design background for PIN pairing and flash speed is in [docs/design-notes.md](docs/design-notes.md). Contributions are welcome.

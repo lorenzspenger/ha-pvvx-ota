@@ -22,7 +22,9 @@ OTA_CHAR = "00010203-0405-0607-0809-0a0b0c0d2b12"
 CFG_CHAR = "00001f1f-0000-1000-8000-00805f9b34fb"
 MAX_BLE_OTA = 0x20000  # bigger images need the web flasher's extended OTA
 BLOCK = 16
-STATUS_EVERY = 8  # blocks between status polls, as the web flasher does
+# Blocks between status reads. Matches pvvx's TelinkMiFlasher (reads the status after every 8th block);
+# measured 2026-11-28: 8, 10 and 12 worked, 16 aborted with "status read timed out".
+OTA_STATUS_EVERY = 8
 SLOW_BLOCKS_PER_S = (
     15.0  # below this rate (normal: 60 and more) a flash is not worth the battery: stopped before the end marker
 )
@@ -41,7 +43,7 @@ CFG_TIMEOUT = 10.0
 FLASH_TIMEOUT = 90 * 60.0
 # Data blocks as write-without-response: with write-with-response every 16-byte block costs a full
 # connection-event round trip (measured ~0.6 s/block through an ESPHome proxy). Loss is still caught by
-# the status poll every STATUS_EVERY blocks.
+# the status poll every OTA_STATUS_EVERY blocks.
 DATA_RESPONSE = False
 END_MARKER_GRACE = 8.0  # seconds to watch the device after the end marker
 
@@ -258,7 +260,7 @@ async def flash(
     progress: Callable[[int], None] | None = None,
     write_timeout: float = WRITE_TIMEOUT,
     total_timeout: float = FLASH_TIMEOUT,
-    status_every: int = STATUS_EVERY,
+    status_every: int = OTA_STATUS_EVERY,
     connected_at: float | None = None,
     context: str = "",
 ) -> dict[str, Any]:
@@ -529,7 +531,7 @@ async def _flash(
     fw: bytes,
     progress: Callable[[int], None] | None,
     wt: float,
-    status_every: int = STATUS_EVERY,
+    status_every: int = OTA_STATUS_EVERY,
     connected_at: float | None = None,
     context: str = "",
 ) -> dict[str, Any]:

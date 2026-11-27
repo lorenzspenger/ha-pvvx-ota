@@ -76,12 +76,8 @@
     },
     "flash_latest": {
       "name": "Flash latest release or a chosen version",
-      "description": "Flashes the latest release image for this sensor even if it is up to date, or the release named in version (also an older one). status_every sets how often the status is read and force skips the battery check.",
+      "description": "Flashes the latest release image for this sensor even if it is up to date, or the release named in version (also an older one). force skips the battery check.",
       "fields": {
-        "status_every": {
-          "name": "Status interval",
-          "description": "Blocks between status reads (default 8). Larger is faster if the sensor and proxy keep up; too large makes lost blocks abort the flash."
-        },
         "force": {
           "name": "Force",
           "description": "Flash even if the battery voltage is below 2.5 V (or unknown low)."
