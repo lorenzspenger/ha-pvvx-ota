@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.25.0-beta.3
+
+Git tag `v0.25.0-beta.3`, manifest version `0.25.0b3`.
 
 - Repair issues now stay after a Home Assistant restart.
 
