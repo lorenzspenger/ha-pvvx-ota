@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.25.0-beta.5
+
+Git tag `v0.25.0-beta.5`, manifest version `0.25.0b5`.
 
 - **A flash across firmware 5.7/5.8 (either direction) keeps encryption working**: the key is carried over in memory and written back after the version check.
 - **The saved settings are written back automatically after such a flash.**
