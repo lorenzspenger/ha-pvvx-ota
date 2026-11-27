@@ -142,3 +142,30 @@ async def test_unverified_firmware_gets_no_clock_writes(hass: HomeAssistant, ena
         assert old.time_writes == []
     finally:
         [c.stop() for c in ctx]
+
+
+async def version_read_writes(hass, options=None):
+    client = FakeClient(cfg=SAMPLE)
+    entry, calls, ctx = await setup_cfg_entry(hass, client, options=options)
+    try:
+        client.time_writes.clear()
+        client.device_time = 0  # the clock was lost since the setup read
+        entity = hass.data["entity_components"]["update"].get_entity("update.atc_000001")
+        await entity._async_read_device()
+        return client.time_writes, client
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_the_version_read_sets_the_clock_in_its_own_connection(hass: HomeAssistant, enable_bluetooth, freezer):
+    await berlin(hass, freezer)
+    writes, client = await version_read_writes(hass)
+    assert writes == [clk.build_set(TARGET)] and client.device_time == TARGET
+
+
+async def test_the_version_read_leaves_the_clock_alone_when_auto_sync_is_off(
+    hass: HomeAssistant, enable_bluetooth, freezer
+):
+    await berlin(hass, freezer)
+    writes, _ = await version_read_writes(hass, options={CONF_AUTO_CLOCK_SYNC: False})
+    assert writes == []

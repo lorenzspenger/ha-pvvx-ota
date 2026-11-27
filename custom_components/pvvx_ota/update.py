@@ -456,6 +456,7 @@ class PvvxUpdateEntity(UpdateEntity):
         try:
             async with shared.lock, async_connected(self.hass, self._address, self._name) as client:
                 raw = await read_cfg_raw(client)
+                await self._store_cfg._auto_clock(client, raw)  # in this connection anyway; never fatal
         except PairingRequiredError as err:
             self._store_cfg.pairing_lost(err)
             raise ha_error("sensor_error", name=self._name, error=err) from err
@@ -681,6 +682,7 @@ class PvvxUpdateEntity(UpdateEntity):
                 self._store_cfg.flash_failed(
                     text
                 )  # stays until a later flash, or the version check below, shows the new version
+                _LOGGER.warning("%s: flash %s: %s", self._name, "not confirmed" if unverified else "failed", text)
                 if unverified:
                     keep_carry = True
                     # the image may have been applied: read the version back like after a normal flash

@@ -506,3 +506,30 @@ async def test_flash_issues_clear_when_a_read_shows_the_latest_version(
         assert reg.async_get_issue(DOMAIN, ISSUE) is None
     finally:
         [c.stop() for c in ctx]
+
+
+async def test_a_failed_flash_is_logged_as_a_warning(hass: HomeAssistant, enable_bluetooth, fast_batch, caplog):
+    caplog.set_level("WARNING")
+    client = FakeClient(cfg=HW0, link_error_at=6)
+    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0)
+    try:
+        await failing_flash(hass)
+        recs = [r for r in caplog.records if "flash failed" in r.getMessage()]
+        assert len(recs) == 1 and recs[0].levelname == "WARNING" and "link failed" in recs[0].getMessage()
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_an_unconfirmed_flash_is_logged_as_not_confirmed(
+    hass: HomeAssistant, enable_bluetooth, fast_batch, caplog
+):
+    caplog.set_level("WARNING")
+    client = FakeClient(cfg=HW0, after_marker="stall")
+    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0)
+    try:
+        started, timer = capture_verify()
+        with timer, pytest.raises(HomeAssistantError):
+            await flash(hass)
+        assert any(r.levelname == "WARNING" and "flash not confirmed" in r.getMessage() for r in caplog.records)
+    finally:
+        [c.stop() for c in ctx]
