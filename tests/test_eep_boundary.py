@@ -76,6 +76,44 @@ async def test_boundary_flash_with_encryption_on_keeps_key_flag_and_settings(
         [c.stop() for c in ctx]
 
 
+async def test_boundary_flash_sets_the_clock_after_the_key_and_the_settings(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    from homeassistant.util import dt as dt_util
+
+    from custom_components.pvvx_ota import clock as clk
+
+    client = sensor()
+    client.restart_on_write = True  # every write restarts the sensor: its clock is stale again
+    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0, version=0x57)
+    try:
+        entity = await flash_and_verify(hass, entry)
+        await entity._async_verify_after_flash()
+        assert client.commands[-4:] == ["key", "cfg", "cfg", "clock"]  # key, flag, settings; the clock is the last step
+        assert abs(int.from_bytes(client.time_writes[-1][1:5], "little") - clk.local_epoch(dt_util.now())) <= 5
+        assert client.bindkey == OLD_KEY and cfg.get(client.cfg, "adv_interval") == 16
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_boundary_flash_without_settings_changes_sets_the_clock_in_the_key_connection(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    client = sensor()
+    client.restart_on_write = True
+    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0, version=0x57)
+    try:
+        entity = await flash_and_verify(hass, entry)
+        store = entry.runtime_data
+        store.snapshot["fields"] = {}  # nothing but the key to carry over
+        before = len(calls)
+        await entity._async_verify_after_flash()
+        assert client.commands[-3:] == ["key", "cfg", "clock"]  # key, flag, then the clock
+        assert len(calls) - before <= 2  # the version read and the key connection: no extra one for the clock
+    finally:
+        [c.stop() for c in ctx]
+
+
 async def test_boundary_flash_with_encryption_off_restores_settings_and_never_reads_the_key(
     hass: HomeAssistant, enable_bluetooth, fast_batch
 ):

@@ -52,8 +52,6 @@ REBOOT_REPLY_TIMEOUT = 5.0
 REBOOT_QUIET = 30.0  # s without other connections after the reboot command
 REBOOT_WATCH = 30.0  # s to look for the first advertisement afterwards (log only)
 CLOCK_TIMEOUT = 5.0
-CLOCK_READBACK_DELAY = 2.0  # seconds between a clock set and the one read-back
-CLOCK_READBACK_TOLERANCE = 3  # seconds the read-back may differ from the expected time
 CALIB_TIMEOUT = 5.0
 BATCH_WINDOW = 2.0  # seconds: changes arriving within this window share one connection
 
@@ -83,6 +81,7 @@ class ConfigStore:
         self._flush: asyncio.Task[None] | None = None
         self._unreachable = False  # a read failed and none worked since: logged once, and once more when it is back
         self._writing = False  # the running flush has taken its batch and is on the wire: new changes need the next one
+        self._clock_last = False  # the next batch is the last connection of the post-flash work: it sets the clock
         self.flash_latest: Callable[[], Awaitable[None]] | None = (
             None  # set by the update entity (same path as Install)
         )
@@ -303,24 +302,9 @@ class ConfigStore:
             return "never"
         return datetime.fromtimestamp(last, UTC).strftime("%H:%M:%S")  # the sensor counts local wall-clock seconds
 
-    async def _read_back_clock(self, client: Any) -> None:
-        """One read in the same connection a moment after a set: warns when the sensor did not keep the time. Never fatal."""
-        try:
-            await asyncio.sleep(CLOCK_READBACK_DELAY)
-            current = clockmod.parse(await send_command(client, b"\x23", 0x23, timeout=CLOCK_TIMEOUT)).current
-            off = current - clockmod.local_epoch(dt_util.now())
-        except (OtaError, clockmod.ClockError) as err:
-            _LOGGER.debug("%s: clock read-back skipped: %s", self.name, err)
-            return
-        if abs(off) > CLOCK_READBACK_TOLERANCE:
-            _LOGGER.warning("%s: clock did not keep the set time (read back %s s off)", self.name, off)
-        else:
-            _LOGGER.debug("%s: clock read back %s s off after the set", self.name, off)
-
-    async def _sync_clock(self, client: Any, force: bool = False, verify: bool = True) -> bool:
+    async def _sync_clock(self, client: Any, force: bool = False) -> bool:
         """Set the sensor's clock to the local time (what TelinkMiFlasher sends, see clock.py); without ``force`` only when
-        it is more than AUTO_TOLERANCE seconds off. Returns whether a write happened. Raises OtaError/ClockError.
-        ``verify`` adds one read about CLOCK_READBACK_DELAY seconds after a set."""
+        it is more than AUTO_TOLERANCE seconds off. Returns whether a write happened. Raises OtaError/ClockError."""
         target = clockmod.local_epoch(dt_util.now())
         reading = clockmod.parse(await send_command(client, b"\x23", 0x23, timeout=CLOCK_TIMEOUT))
         before = reading.current
@@ -351,17 +335,14 @@ class ConfigStore:
             last_text,
             "; sensor restarted since the last set" if restarted else "",
         )
-        if verify:
-            await self._read_back_clock(client)
         return True
 
-    async def _auto_clock(self, client: Any, raw: bytes, verify: bool = True) -> None:
-        """Automatic sync inside a connection that is open anyway: never fatal, only where the layout is verified.
-        ``verify=False`` skips the read-back (connections that must not be held up, like the one before a flash)."""
+    async def _auto_clock(self, client: Any, raw: bytes) -> None:
+        """Automatic sync inside a connection that is open anyway: never fatal, only where the layout is verified."""
         if not self.auto_clock_sync or not cfgmod.is_verified(raw):
             return
         try:
-            await self._sync_clock(client, verify=verify)
+            await self._sync_clock(client)
         except (OtaError, clockmod.ClockError) as err:
             _LOGGER.debug("%s: automatic clock sync skipped: %s", self.name, err)
 
@@ -484,13 +465,14 @@ class ConfigStore:
         await asyncio.sleep(BATCH_WINDOW)
         changes, self._pending = self._pending, {}
         self._writing = True
+        clock, self._clock_last = self._clock_last, False
         try:
-            await self._write(changes)
+            await self._write(changes, clock)
         finally:
             self._writing = False
             self.async_notify()  # drop the optimistic values: show what the sensor really has
 
-    async def _write(self, changes: dict[str, int]) -> None:
+    async def _write(self, changes: dict[str, int], clock: bool = False) -> None:
         shared = get_shared(self.hass)
         async with shared.lock:
             if shared.flashing:
@@ -501,10 +483,14 @@ class ConfigStore:
                     raw = await read_cfg_raw(client)
                     payload = cfgmod.apply(raw, changes, parse_cfg(raw)[1])
                     if payload == raw[2:]:
+                        if clock:
+                            await self._auto_clock(client, raw)
                         self.set_raw(raw)
                         return
                     _LOGGER.debug("%s: writing %s -> %s", self.name, raw[2:].hex(), payload.hex())
                     echoed = await write_cfg(client, payload)
+                    if clock:
+                        await self._auto_clock(client, echoed)  # the last step: a restart would have lost it
             except (OtaError, cfgmod.ConfigError) as err:
                 raise ha_error("sensor_error", name=self.name, error=err) from err
         self.set_raw(echoed)
@@ -554,7 +540,7 @@ class ConfigStore:
                 await self._carry_over(snap)  # the flag alone would use the new random key: never the flag-only restore
                 return
             if self.entry.options.get(CONF_AUTO_RESTORE_ENCRYPTION, True):
-                await self._restore_encryption(snap)
+                await self._restore_encryption(snap, clock=True)
             self._update_settings_issue()
         finally:
             self.clear_carry()
@@ -562,30 +548,34 @@ class ConfigStore:
 
     async def _carry_over(self, snap: dict[str, Any]) -> None:
         """After a flash across the 5.7/5.8 EEPROM rewrite the sensor starts with defaults and a new random key: write the key
-        and the settings back. Without the key (not read, or lost with a restart) encryption stays off and a repair issue says so."""
+        and the settings back. Without the key (not read, or lost with a restart) encryption stays off and a repair issue says so.
+        The clock is set in the last connection of the sequence (the writes may restart the sensor)."""
+        changes = {k: v for k, v in self._restorable(snap).items() if self.value(k) != v}
         if snap.get("crypto") and cfgmod.get(self.raw or b"", "adv_crypto") == 0:
             key, self._carry_key = self._carry_key, None
             if (
                 key is not None
                 and self.entry.options.get(CONF_AUTO_RESTORE_ENCRYPTION, True)
-                and await self._write_back_key(key)
+                and await self._write_back_key(key, clock=not changes)
             ):
                 self._clear_issue("encryption_key_replaced")
                 _LOGGER.info("%s: BTHome encryption and its key carried over the firmware flash", self.name)
             else:
                 _LOGGER.warning("%s: the flash replaced the encryption key and it was not carried over", self.name)
                 self._issue("encryption_key_replaced")
-        changes = {k: v for k, v in self._restorable(snap).items() if self.value(k) != v}
         if changes:
             try:
+                self._clock_last = True
                 await self.async_request(changes)
             except HomeAssistantError as err:
                 _LOGGER.warning("%s: settings could not be carried over the flash: %s", self.name, err)
+            finally:
+                self._clock_last = False
         if self._matches_snapshot(self.raw):
             self._clear_issue("reset_defaults")
         self._update_settings_issue()
 
-    async def _write_back_key(self, key: bytes) -> bool:
+    async def _write_back_key(self, key: bytes, clock: bool = False) -> bool:
         """Write the carried key to the sensor, check its echo, switch encryption on and check that. Never raises, never logs the key."""
         try:
             async with self._session() as client:
@@ -598,6 +588,8 @@ class ConfigStore:
                 else:
                     payload = cfgmod.apply(raw, {"adv_crypto": 1}, parse_cfg(raw)[1], frozenset({"adv_crypto"}))
                     echoed = await write_cfg(client, payload)
+                if clock:
+                    await self._auto_clock(client, echoed)  # the last step of the post-flash work
             if cfgmod.get(echoed, "adv_crypto") != 1:
                 raise ha_error("encryption_not_switched_on", name=self.name)
         except (HomeAssistantError, OtaError, cfgmod.ConfigError) as err:
@@ -614,7 +606,7 @@ class ConfigStore:
         else:
             self._clear_issue("settings_differ_after_flash")
 
-    async def _restore_encryption(self, snap: dict[str, Any]) -> None:
+    async def _restore_encryption(self, snap: dict[str, Any], clock: bool = False) -> None:
         """If encryption was on in the snapshot (before a flash or a reset) and is off now, switch it on again WITHOUT writing a key: the key stays
         in the sensor's EEPROM. Verified by the block the sensor reports back. Nothing secret is logged or stored."""
         if not snap.get("crypto") or self._issue_open("encryption_key_replaced"):
@@ -635,6 +627,8 @@ class ConfigStore:
                     payload = cfgmod.apply(raw, {"adv_crypto": 1}, hw, frozenset({"adv_crypto"}))
                     await require_stored_key(client)
                     echoed = await write_cfg(client, payload)
+                if clock:
+                    await self._auto_clock(client, echoed)  # the last step of the post-flash work
             if cfgmod.get(echoed, "adv_crypto") != 1:
                 raise ha_error("encryption_not_switched_on", name=self.name)
         except (HomeAssistantError, OtaError, cfgmod.ConfigError) as err:
@@ -897,9 +891,7 @@ class ConfigStore:
         async with self._session() as client:
             raw = await read_cfg_raw(client)  # same authentication rules as every other command
             self.set_raw(raw)
-            await self._auto_clock(
-                client, raw, verify=False
-            )  # the sensor restarts right after this connection: set its clock first
+            await self._auto_clock(client, raw)  # the sensor restarts right after this connection: set its clock first
             try:
                 await send_command(client, b"\x72", 0x72, timeout=REBOOT_REPLY_TIMEOUT)
             except OtaError as err:

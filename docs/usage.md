@@ -101,7 +101,7 @@ See [examples.md](examples.md).
 
 ## Clock
 
-pvvx sensors keep their own clock (display on some models, timestamps for the history). The *Sync clock* button sets it to your local time with command `0x23`, exactly the payload TelinkMiFlasher's "Set Time" sends (local wall-clock time as epoch seconds; verified in pvvx `cmd_parser.c` and the flasher). The integration also checks the clock inside connections it makes anyway (setup/refresh read, the version read, the read before a flash, the reboot button) and sets it only if it is more than 5 s off, so there are no extra connections. This can be switched off in the integration options. Failures never affect the connection.
+pvvx sensors keep their own clock (display on some models, timestamps for the history). The *Sync clock* button sets it to your local time with command `0x23`, exactly the payload TelinkMiFlasher's "Set Time" sends (local wall-clock time as epoch seconds; verified in pvvx `cmd_parser.c` and the flasher). The integration also checks the clock inside connections it makes anyway (setup/refresh read, the version read, the read before a flash, the reboot button, and the last connection of the post-flash key/settings write-back) and sets it only if it is more than 5 s off, so there are no extra connections. This can be switched off in the integration options. Failures never affect the connection.
 
 ## Release notes
 

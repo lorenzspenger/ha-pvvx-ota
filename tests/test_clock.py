@@ -182,7 +182,7 @@ async def test_clock_read_and_last_set_are_logged(hass: HomeAssistant, enable_bl
         assert f"clock set (it was {-TARGET} s off; sensor last set: never)" in caplog.text
         assert "restarted" not in caplog.text  # this run had not set it before
         assert entry.runtime_data.last_clock_read["offset_s"] == -TARGET
-        assert client.time_reads == 2  # the read and the read-back
+        assert client.time_reads == 1  # the read only, no read-back
     finally:
         [c.stop() for c in ctx]
 
@@ -215,35 +215,36 @@ async def test_four_byte_reply_reports_not_reported(hass: HomeAssistant, enable_
         [c.stop() for c in ctx]
 
 
-async def test_readback_mismatch_warns(hass: HomeAssistant, enable_bluetooth, freezer, caplog):
+async def test_a_clock_that_stands_still_while_connected_is_not_a_warning(
+    hass: HomeAssistant, enable_bluetooth, freezer, caplog
+):
+    """Observed on real sensors: the clock does not advance during a connection. No read-back, so nothing to warn about."""
+    caplog.set_level("DEBUG", logger="custom_components.pvvx_ota")
     await berlin(hass, freezer)
     client = FakeClient(cfg=SAMPLE)
-    client.drop_set = True
+    client.clock_frozen_while_connected = True
     entry, calls, ctx = await setup_cfg_entry(hass, client)
     try:
-        assert f"clock did not keep the set time (read back {1_000_000 - TARGET} s off)" in caplog.text
-        assert len(client.time_writes) == 1  # no retry loop
+        assert client.time_writes == [clk.build_set(TARGET)] and client.time_reads == 1
+        assert not [r for r in caplog.records if r.name.startswith("custom_components.pvvx_ota") and r.levelno >= 30]
+        assert "read back" not in caplog.text and "did not keep" not in caplog.text
     finally:
         [c.stop() for c in ctx]
 
 
-async def test_readback_skipped_before_flash_and_reboot(hass: HomeAssistant, enable_bluetooth):
-    from unittest.mock import patch as p
-
-    client = FakeClient(cfg=SAMPLE[:11] + bytes([0, 0]))
-    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0)
-    try:
-        client.device_time = 0
-        client.time_reads = 0
-        with p("custom_components.pvvx_ota.store.REBOOT_WATCH", 0.0):
-            await entry.runtime_data.async_reboot()
-        assert len(client.time_writes) >= 1 and client.time_reads == 1  # the diff read only
-        client.device_time = 0
-        client.time_reads = 0
-        with p("custom_components.pvvx_ota.update.async_call_later"):
-            await hass.services.async_call(
-                "pvvx_ota", "flash_latest", {"entity_id": "update.atc_000001"}, blocking=True
-            )
-        assert client.time_reads == 1
-    finally:
-        [c.stop() for c in ctx]
+def test_the_fake_clock_stands_still_while_connected():
+    now = [1000.0]
+    client = FakeClient(cfg=SAMPLE)
+    client.time_source = lambda: now[0]
+    client.clock_frozen_while_connected = True
+    client.device_time = 500
+    now[0] += 10  # between connections: ticks
+    assert client.device_time == 510
+    client._session_at = now[0]  # a connection opens
+    now[0] += 6
+    assert client.device_time == 510  # frozen while connected
+    client._lost += now[0] - client._session_at  # what disconnect() does
+    client._session_at = None
+    assert client.device_time == 510
+    now[0] += 4
+    assert client.device_time == 514

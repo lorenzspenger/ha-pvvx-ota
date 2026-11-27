@@ -694,9 +694,7 @@ class PvvxUpdateEntity(UpdateEntity):
                         raise FirmwareError("device did not answer like pvvx custom firmware; not flashing")
                     self._store(ver, hw)
                     self._store_cfg.set_raw(raw)
-                    await self._store_cfg._auto_clock(
-                        client, raw, verify=False
-                    )  # never fatal, no read-back delay before a flash
+                    await self._store_cfg._auto_clock(client, raw)  # never fatal
                     self._store_cfg.take_snapshot()  # a flash can reset settings; the user may restore them
                     if local is None and wanted is not None:
                         assert catalog is not None

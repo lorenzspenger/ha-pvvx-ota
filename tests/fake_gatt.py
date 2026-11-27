@@ -13,12 +13,20 @@ from custom_components.pvvx_ota.ota import CFG_CHAR, OTA_CHAR
 class FakeClient:
     @property
     def device_time(self) -> int:
-        return self._clock_base + int(self.time_source() - self._clock_set_at)
+        return self._clock_base + int(self._clock_now() - self._clock_set_at)
 
     @device_time.setter
     def device_time(self, value: int) -> None:
         self._clock_base = value
-        self._clock_set_at = self.time_source()
+        self._clock_set_at = self._clock_now()
+
+    def _clock_now(self) -> float:
+        """The time the sensor's clock sees: with ``clock_frozen_while_connected`` it stands still during a connection
+        (the first command opens it, ``disconnect`` closes it) and the time spent connected is lost."""
+        now = self.time_source()
+        if self.clock_frozen_while_connected and self._session_at is not None:
+            return self._session_at - self._lost
+        return now - self._lost
 
     def reboot(self, stale: int = 1_000_000) -> None:
         """Sensor restart: the clock falls back to a stale value (last history record) and last_set to 0."""
@@ -58,6 +66,13 @@ class FakeClient:
         self._clock_base = 0
         self._clock_set_at = self.time_source()
         self.time_reads = 0
+        self.restart_on_write = (
+            False  # a key or settings write restarts the sensor (the clock falls back to a stale value)
+        )
+        self.commands: list[str] = []  # order of the state-changing config commands: key, cfg, clock
+        self.clock_frozen_while_connected = False  # observed: the clock does not advance while the link is up
+        self._session_at: float | None = None
+        self._lost = 0.0
         self.drop_set = False  # the sensor echoes a set but does not keep it (restores a stale clock)
         self.last_set: int | None = None  # None: 4-byte reply (no TIME_ADJUST); an int adds the 4-byte last-set time
         self.time_writes: list[bytes] = []
@@ -117,8 +132,11 @@ class FakeClient:
                 raise PermissionError("Bluetooth GATT Error handle=45 error=15 description=Insufficient encryption")
             if data[:1] == b"\x18":  # bindkey get/set (16 bytes)
                 if len(data) == 17:
+                    self.commands.append("key")
                     self.bindkey = bytes(data[1:])
                     self.key_writes += 1
+                    if self.restart_on_write:
+                        self.reboot()
                     self._cb(char, bytearray(b"\x18" + (bytes(16) if self.key_echo_wrong else self.bindkey)))
                 elif self.bindkey in (bytes(16), b"\xff" * 16):
                     self._cb(char, bytearray([0x18, 0xFF]))  # no key in the EEPROM
@@ -131,9 +149,12 @@ class FakeClient:
                 self.pin = int.from_bytes(data[1:5], "little")
                 self._cb(char, bytearray([0x70, 3 if self.pin_fails else 1]))
                 return
+            if self.clock_frozen_while_connected and self._session_at is None:
+                self._session_at = self.time_source()
             if data[:1] == b"\x23":  # device clock: get (no payload) / set (4 bytes LE); reply 0x23 + time
                 if len(data) >= 5:
                     self.time_writes.append(bytes(data))
+                    self.commands.append("clock")
                     self.device_time = int.from_bytes(data[1:5], "little")
                     if self.last_set is not None:
                         self.last_set = self.device_time
@@ -165,6 +186,9 @@ class FakeClient:
                 return
             if data[:1] == b"\x55" and len(data) > 1:  # write config: 0x55 + cfg bytes (no version byte)
                 self.cfg_writes.append(bytes(data))
+                self.commands.append("cfg")
+                if self.restart_on_write:
+                    self.reboot()
                 new = bytearray(self.cfg[:2]) + bytearray(data[1:])
                 new = bytearray(self.clamp(bytes(new)))
                 self.cfg = bytes(new)
@@ -227,4 +251,7 @@ class FakeClient:
         return bytearray([0])
 
     async def disconnect(self):
+        if self._session_at is not None:
+            self._lost += self.time_source() - self._session_at
+            self._session_at = None
         self.disconnected = True

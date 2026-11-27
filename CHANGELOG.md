@@ -1,10 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **No clock read-back warning:** the read about 2 s after a clock set is gone, and with it the "clock did not keep the set time" warning; the debug clock read, the "clock set" line (with last-set time and restart note) and the diagnostics entry stay.
+- **Clock set last after a flash:** the post-flash key and settings write-back now ends with the clock in the same connection (after the key and settings writes), so a restart caused by the writes no longer leaves the clock stale.
+
 ## 0.26.0-beta.2
 
 Git tag `v0.26.0-beta.2`, manifest version `0.26.0b2`.
 
-- **Clock diagnostics:** every clock read is logged at debug level with the sensor's time, its last-set time and the offset; the "clock set" line shows when the sensor was last set and whether it restarted since; one read-back about 2 s after a set warns when the sensor did not keep the time (not before a flash or reboot); diagnostics include the last clock read.
+- **Clock diagnostics:** every clock read is logged at debug level with the sensor's time, its last-set time and the offset; the "clock set" line shows when the sensor was last set and whether it restarted since; diagnostics include the last clock read.
 
 ## 0.26.0-beta.1
 
