@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **Install a specific firmware version, including an older one:** `update.install` accepts `version` (for example `5.7`), `pvvx_ota.flash_latest` has a new `version` field.
+- **Only verified releases 4.2 to 5.9 with an image for the sensor's board are accepted**, and not older than the firmware that knows the sensor's hardware id; a refusal lists the allowed versions.
+- **Older images come from pinned pvvx commits** and are checked against a SHA-256 and size table before the flash; from 4.7 on the board byte in the image header is checked too.
+- **New script `scripts/generate_firmware_versions.py`** regenerates that table from a clone of pvvx/ATC_MiThermometer.
+- **A downgrade across firmware 5.7/5.8 carries over settings and encryption key**, as an update does.
+- **An unconfirmed flash counts as done only if the sensor reports exactly the version that was flashed.**
+- **New docs:** `docs/downgrade-research.md` (source research behind this).
+
 ## 0.25.0-beta.7
 
 Git tag `v0.25.0-beta.7`, manifest version `0.25.0b7`.

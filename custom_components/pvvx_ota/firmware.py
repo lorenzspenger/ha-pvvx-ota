@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
 import time
@@ -14,6 +15,8 @@ import aiohttp
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
+from . import firmware_versions as pinned
+from .config import VERIFIED_VERSIONS
 from .const import CATALOG_MIN_INTERVAL, CATALOG_RETRY, CATALOG_TTL, MAX_DOWNLOAD, RAW_URL
 from .ota import FirmwareError, board_of_filename, check_image
 
@@ -114,6 +117,55 @@ def choose_target(catalog: Catalog, hw_id: int | None, beta_wanted: bool) -> Tar
     if catalog.beta <= catalog.version:
         return replace(stable, note="no beta newer than the stable release")
     return Target(catalog.beta, True, src)
+
+
+@dataclass(frozen=True)
+class Pin:
+    """One pinned release image: where it is fetched from and what the bytes must be."""
+
+    version: int
+    board: str
+    commit: str
+    path: str
+    sha256: str
+    size: int
+    device_byte: int | None  # the board byte of the image header (0x14), None where the table has none for the board
+
+    @property
+    def url(self) -> str:
+        return f"https://raw.githubusercontent.com/{pinned.REPO}/{self.commit}/{self.path}"
+
+
+def installable_versions(board: str | None, hw_id: int | None) -> list[int]:
+    """Releases (version bytes, ascending) that may be installed on a sensor of this board and hardware id: the verified
+    versions that have a pinned image for the board and whose firmware already knows the hardware id."""
+    if board is None:
+        return []
+    first = 0 if hw_id is None else pinned.HW_FIRST_VERSION.get(hw_id, 0)
+    return [v for v in sorted(VERIFIED_VERSIONS) if board in pinned.IMAGES.get(v, {}) and v >= first]
+
+
+def pin_for(version: int, board: str) -> Pin | None:
+    """The pinned image of a release for a board, None if there is none."""
+    entry = pinned.IMAGES.get(version, {}).get(board)
+    if entry is None:
+        return None
+    commit = entry[2] if len(entry) > 2 else pinned.RELEASE_COMMITS[version]
+    name = f"{board}_v{version:02x}.bin"
+    path = name if version <= pinned.FLAT_UNTIL else f"bin/{name}"
+    return Pin(version, board, commit, path, entry[0], entry[1], pinned.DEVICE_BYTE.get(board))
+
+
+def verify_pinned(fw: bytes, pin: Pin) -> None:
+    """Refuse bytes that are not the pinned image: size and SHA-256 first, then the Telink checks, then (from 4.7 on) the
+    board byte in the header."""
+    if len(fw) != pin.size or hashlib.sha256(fw).hexdigest() != pin.sha256:
+        raise FirmwareError(
+            f"the downloaded image for {pin.board} V{pin.version >> 4}.{pin.version & 15} does not match its pinned checksum; not flashing"
+        )
+    check_image(fw)
+    if pin.version >= pinned.HEADER_BOARD_FROM and pin.device_byte is not None and fw[0x14] != pin.device_byte:
+        raise FirmwareError(f"the image header is not that of board {pin.board}; not flashing")
 
 
 def parse_history(markdown: str) -> dict[int, str]:
@@ -341,6 +393,17 @@ class FirmwareSource:
         if ".." in path or not (_PATH_RE.fullmatch(path) or _URL_RE.fullmatch(path)):
             raise FirmwareError(f"refusing odd image path {path!r}")
         url = path if path.startswith("https://") else RAW_URL + path
+        fw = await self._fetch(url)
+        check_image(fw)
+        return fw
+
+    async def async_download_pinned(self, pin: Pin) -> bytes:
+        """Download a pinned release image and check it against its pin (size, SHA-256, header)."""
+        fw = await self._fetch(pin.url)
+        verify_pinned(fw, pin)
+        return fw
+
+    async def _fetch(self, url: str) -> bytes:
         try:
             async with self._session.get(url, timeout=aiohttp.ClientTimeout(total=60)) as resp:
                 resp.raise_for_status()
@@ -352,8 +415,6 @@ class FirmwareSource:
                     if size > MAX_DOWNLOAD:
                         raise FirmwareError("image bigger than the BLE OTA limit")
                     chunks.append(chunk)
-                fw = b"".join(chunks)
+                return b"".join(chunks)
         except (aiohttp.ClientError, TimeoutError) as err:
             raise FirmwareError(f"download failed: {err}") from err
-        check_image(fw)
-        return fw

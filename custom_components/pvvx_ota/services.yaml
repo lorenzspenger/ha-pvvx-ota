@@ -35,6 +35,10 @@ flash_latest:
       default: false
       selector:
         boolean:
+    version:
+      example: "5.7"
+      selector:
+        text:
 
 set_encryption:
   target:

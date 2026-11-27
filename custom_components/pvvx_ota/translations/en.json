@@ -75,8 +75,8 @@
       }
     },
     "flash_latest": {
-      "name": "Flash latest release",
-      "description": "Flashes the latest release image for this sensor even if it is up to date. Used to tune the flash speed.",
+      "name": "Flash latest release or a chosen version",
+      "description": "Flashes the latest release image for this sensor even if it is up to date, or the release named in version (also an older one). Used to tune the flash speed.",
       "fields": {
         "status_every": {
           "name": "Status interval",
@@ -85,6 +85,10 @@
         "force": {
           "name": "Force",
           "description": "Flash even if the battery voltage is below 2.5 V (or unknown low)."
+        },
+        "version": {
+          "name": "Version",
+          "description": "Install this release instead of the latest, for example 5.7. Only releases with a verified image for this sensor's board are accepted."
         }
       }
     },
@@ -226,6 +230,18 @@
     },
     "sensor_not_heard": {
       "message": "{name} ({address}) has not been heard by a connectable Bluetooth scanner yet."
+    },
+    "version_format": {
+      "message": "\"{version}\" is not a firmware version. Write it like 5.7."
+    },
+    "version_not_available": {
+      "message": "Firmware {version} cannot be installed on {name} ({board}): there is no verified image of it for this sensor's board and hardware. Versions you can choose: {allowed}."
+    },
+    "version_board_unknown": {
+      "message": "The board of {name} cannot be determined, so no specific version can be chosen: {error}"
+    },
+    "catalog_needed_for_version": {
+      "message": "The firmware list is needed to find the board of the sensor, and it is not available: {error}. Try again later."
     }
   },
   "issues": {
