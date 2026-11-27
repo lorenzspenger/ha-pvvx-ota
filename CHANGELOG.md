@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.26.0-beta.3
 
-- **No clock read-back warning:** the read about 2 s after a clock set is gone, and with it the "clock did not keep the set time" warning; the debug clock read, the "clock set" line (with last-set time and restart note) and the diagnostics entry stay.
-- **Clock set last after a flash:** the post-flash key and settings write-back now ends with the clock in the same connection (after the key and settings writes), so a restart caused by the writes no longer leaves the clock stale.
+Git tag `v0.26.0-beta.3`, manifest version `0.26.0b3`.
+
+- **The clock read-back after a set and its "clock did not keep the set time" warning are removed.**
+- **After a flash the clock is set last**, after the key and settings are written back.
 
 ## 0.26.0-beta.2
 
