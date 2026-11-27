@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 
-from homeassistant.components import persistent_notification
 from homeassistant.components.bluetooth import async_ble_device_from_address
 from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import CoreState, HomeAssistant, callback
@@ -26,15 +25,15 @@ __all__ = ["DOMAIN", "PvvxConfigEntry", "Shared", "get_shared"]
 
 _LOGGER = logging.getLogger(__name__)
 
-NOTIFICATION_KEYS = ("encryption_changed", "reset_defaults")
 ISSUE_KEYS = (
     "adv_type_changed",
+    "encryption_changed",
     "encryption_restore_failed",
     "flash_unconfirmed",
     "pin_bond_lost",
     "pin_set",
+    "reset_defaults",
     "settings_differ_after_flash",
-    *NOTIFICATION_KEYS,
 )
 PLATFORMS = [Platform.UPDATE, Platform.NUMBER, Platform.SELECT, Platform.SWITCH, Platform.BUTTON, Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -53,11 +52,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: PvvxConfigEntry) -> bool
     # cheap test-before-setup: some connectable scanner has to have heard the sensor lately
     if async_ble_device_from_address(hass, address, connectable=True) is None:
         raise not_ready("sensor_not_heard", name=entry.title, address=address)
-    # these two were repair issues before 0.25 and never cleared; they are notifications now
-    for key in NOTIFICATION_KEYS:
-        ir.async_delete_issue(hass, DOMAIN, f"{key}_{entry.entry_id}")
     store = ConfigStore(hass, entry)
     entry.runtime_data = store
+    store.async_watch_bthome()  # an encryption_changed issue left over from before a restart
+    entry.async_on_unload(store.async_unwatch_bthome)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _remove_empty_own_devices(hass, entry)
     _schedule_first_read(hass, entry, store)
@@ -95,8 +93,6 @@ async def async_remove_entry(hass: HomeAssistant, entry: PvvxConfigEntry) -> Non
     """The entry is gone for good: so are its repair issues."""
     for key in ISSUE_KEYS:
         ir.async_delete_issue(hass, DOMAIN, f"{key}_{entry.entry_id}")
-    for key in NOTIFICATION_KEYS:
-        persistent_notification.async_dismiss(hass, f"{DOMAIN}_{key}_{entry.entry_id}")
     if entry.data.get(CONF_ADDRESS):
         ir.async_delete_issue(hass, DOMAIN, f"flash_failed_{entry.data[CONF_ADDRESS]}")
     if entry.data.get(CONF_PIN_BONDED) and entry.data.get(CONF_BONDED_SCANNER) and entry.data.get(CONF_ADDRESS):

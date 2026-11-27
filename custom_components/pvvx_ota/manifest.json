@@ -20,7 +20,8 @@
   ],
   "config_flow": true,
   "dependencies": [
-    "bluetooth_adapters"
+    "bluetooth_adapters",
+    "repairs"
   ],
   "documentation": "https://github.com/lorenzspenger/ha-pvvx-ota",
   "integration_type": "device",

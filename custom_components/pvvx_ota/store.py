@@ -12,14 +12,14 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from bleak_retry_connector import BleakClientWithServiceCache
-from homeassistant.components import bluetooth, persistent_notification
+from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_ADDRESS
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import CONF_ADDRESS, STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
-from homeassistant.helpers import translation
+from homeassistant.helpers.event import async_track_state_change_event, async_track_state_report_event
 from homeassistant.util import dt as dt_util
 
 from . import calib as calibmod
@@ -40,6 +40,7 @@ from .const import (
 from .device import async_connected
 from .errors import ha_error, validation_error
 from .ota import OtaError, PairingRequiredError, parse_cfg, read_cfg_raw, send_command, write_cfg
+from .registry import find_bthome_device
 from .shared import get_shared
 
 _LOGGER = logging.getLogger(__name__)
@@ -73,6 +74,7 @@ class ConfigStore:
         self.calib: calibmod.Coef | None = None  # sensor coefficients (command 0x25), None if not readable here
         self.last_flash: dict[str, Any] | None = None  # timings/result of the last flash (diagnostics)
         self.quiet_until = 0.0  # event-loop time until which nothing else should connect (sensor is rebooting)
+        self._unwatch: Callable[[], None] | None = None  # BTHome readings watched while encryption_changed is open
         self.first_read: asyncio.Task[None] | None = None  # the background first read of this setup (tests await it)
 
     # -- state ---------------------------------------------------------
@@ -380,6 +382,7 @@ class ConfigStore:
         changes = {k: v for k, v in self._restorable(snap).items() if self.value(k) != v}
         if changes:
             await self.async_request(changes)
+        self._clear_issue("reset_defaults")
         self._update_settings_issue()
 
     # -- after a flash --------------------------------------------------
@@ -434,12 +437,13 @@ class ConfigStore:
         _LOGGER.info("%s: BTHome encryption switched back on after the flash (the key stayed on the sensor)", self.name)
 
     # -- dangerous operations (each behind its own guard in the caller) -----
-    def _issue(self, key: str) -> None:
+    def _issue(self, key: str, fixable: bool = False) -> None:
         ir.async_create_issue(
             self.hass,
             DOMAIN,
             f"{key}_{self.entry.entry_id}",
-            is_fixable=False,
+            data={"entry_id": self.entry.entry_id},
+            is_fixable=fixable,
             severity=ir.IssueSeverity.WARNING,
             translation_key=key,
             translation_placeholders={"name": self.name},
@@ -469,15 +473,50 @@ class ConfigStore:
         """The image was sent but the new version could not be read back: it is not known whether the flash was applied."""
         self._issue("flash_unconfirmed")
 
-    async def _notify(self, key: str) -> None:
-        """A one-off notice (nothing to clear later): a dismissable notification, one per sensor and kind."""
-        strings = await translation.async_get_translations(self.hass, self.hass.config.language, "issues", {DOMAIN})
-        prefix = f"component.{DOMAIN}.issues.{key}."
-        title = strings.get(prefix + "title", key).replace("{name}", self.name)
-        message = strings.get(prefix + "description", "").replace("{name}", self.name)
-        persistent_notification.async_create(
-            self.hass, message, title=title, notification_id=f"{DOMAIN}_{key}_{self.entry.entry_id}"
-        )
+    # -- encryption_changed: cleared by the first BTHome reading afterwards ------------------
+    def _encryption_issue_open(self) -> bool:
+        return ir.async_get(self.hass).async_get_issue(DOMAIN, f"encryption_changed_{self.entry.entry_id}") is not None
+
+    @callback
+    def async_watch_bthome(self) -> None:
+        """While encryption_changed is open: the first state of a BTHome entity of this sensor that is not unavailable or
+        unknown clears it (that only happens once HA decrypts the sensor's adverts, i.e. the bindkey matches)."""
+        self.async_unwatch_bthome()
+        if not self._encryption_issue_open():
+            return
+        device = find_bthome_device(self.hass, self.address, self.entry.entry_id)
+        if device is None:
+            return
+        ent_ids = [
+            e.entity_id
+            for e in er.async_entries_for_device(er.async_get(self.hass), device.id)
+            if e.platform == "bthome"
+        ]
+        if not ent_ids:
+            return
+
+        @callback
+        def seen(event: Event[Any]) -> None:
+            new = event.data.get("new_state")
+            if new is None or new.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+                return
+            self._clear_issue("encryption_changed")
+            self.async_unwatch_bthome()
+
+        unsub_change = async_track_state_change_event(self.hass, ent_ids, seen)
+        unsub_report = async_track_state_report_event(self.hass, ent_ids, seen)  # same value again: only reported
+
+        def unwatch() -> None:
+            unsub_change()
+            unsub_report()
+
+        self._unwatch = unwatch
+
+    @callback
+    def async_unwatch_bthome(self) -> None:
+        if self._unwatch is not None:
+            self._unwatch()
+            self._unwatch = None
 
     def _clear_issue(self, key: str) -> None:
         ir.async_delete_issue(self.hass, DOMAIN, f"{key}_{self.entry.entry_id}")
@@ -508,8 +547,11 @@ class ConfigStore:
             # computing the payload first refuses unverified firmware before anything is written
             payload = cfgmod.apply(raw, {"adv_crypto": int(enable)}, hw, frozenset({"adv_crypto"}))
             bindkey = None
+            changed = cfgmod.get(raw, "adv_crypto") != int(enable)
             if enable:
                 bindkey = bytes.fromhex(key) if key else secrets.token_bytes(16)
+                current = await send_command(client, b"\x18", 0x18, log=False)  # read-only: the key now on the sensor
+                changed = changed or current[1:17] != bindkey
                 reply = await send_command(client, b"\x18" + bindkey, 0x18, log=False)
                 if reply[1:17] != bindkey:
                     raise ha_error("key_not_accepted", name=self.name)
@@ -519,7 +561,9 @@ class ConfigStore:
         self.set_raw(echoed)
         if enable:
             self._clear_issue("encryption_restore_failed")
-        await self._notify("encryption_changed")
+        if changed:  # nothing to check in BTHome when the sensor already was as requested
+            self._issue("encryption_changed")
+            self.async_watch_bthome()
         result: dict[str, Any] = {"encryption": enable}
         if bindkey is not None:
             result["bindkey"] = bindkey.hex()
@@ -555,7 +599,7 @@ class ConfigStore:
             self.take_snapshot()  # the user may bring the old settings back with the restore button
             echoed = await send_command(client, b"\x56", 0x55)
         self.set_raw(echoed)
-        await self._notify("reset_defaults")
+        self._issue("reset_defaults", fixable=True)
 
     async def async_reboot(self) -> None:
         """Command 0x72: the sensor reboots when the link drops (pvvx "Set Reboot on disconnect"). Settings are kept.

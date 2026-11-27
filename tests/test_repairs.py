@@ -1,0 +1,231 @@
+"""Repair issues that clear themselves: encryption changed (next BTHome reading) and settings reset (restore flow)."""
+
+import pytest
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
+from homeassistant.setup import async_setup_component
+
+from custom_components.pvvx_ota import config as cfg
+from custom_components.pvvx_ota.const import DOMAIN
+
+from .fake_gatt import FakeClient
+from .test_config import KEY, SAMPLE, UPDATE, ent, fast_batch, issue, setup_cfg_entry  # noqa: F401
+from .test_ha import bthome_device
+
+
+def bthome_sensor(hass: HomeAssistant):
+    """A BTHome temperature entity on the sensor's device, as HA's bthome integration would have created it."""
+    bt, dev = bthome_device(hass)
+    reg = er.async_get(hass).async_get_or_create("sensor", "bthome", "temp_uid", config_entry=bt, device_id=dev.id)
+    return reg.entity_id
+
+
+async def encrypt(hass):
+    await hass.services.async_call(
+        DOMAIN, "set_encryption", {"entity_id": UPDATE, "enable": True, "key": KEY}, blocking=True, return_response=True
+    )
+
+
+async def test_encryption_changed_clears_on_the_next_bthome_reading(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    sensor = bthome_sensor(hass)
+    hass.states.async_set(sensor, "unavailable")
+    entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=SAMPLE))
+    try:
+        await encrypt(hass)
+        assert issue(hass, entry, "encryption_changed") and not issue(hass, entry, "encryption_changed").is_fixable
+        hass.states.async_set(sensor, "unavailable")  # a state without data
+        hass.states.async_set(sensor, "unknown")
+        await hass.async_block_till_done()
+        assert issue(hass, entry, "encryption_changed")
+        hass.states.async_set(sensor, "21.5")
+        await hass.async_block_till_done()
+        assert issue(hass, entry, "encryption_changed") is None
+        assert entry.runtime_data._unwatch is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_encryption_changed_clears_on_a_reading_with_an_unchanged_value(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    sensor = bthome_sensor(hass)
+    hass.states.async_set(sensor, "21.5")
+    entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=SAMPLE))
+    try:
+        await encrypt(hass)
+        assert issue(hass, entry, "encryption_changed")
+        hass.states.async_set(sensor, "21.5")  # same state: only state_reported fires
+        await hass.async_block_till_done()
+        assert issue(hass, entry, "encryption_changed") is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_encryption_changed_stays_without_a_bthome_entity(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=SAMPLE))  # no BTHome device
+    try:
+        await encrypt(hass)
+        assert issue(hass, entry, "encryption_changed") and entry.runtime_data._unwatch is None
+        bthome_device(hass)  # a device but no entity
+        entry.runtime_data.async_watch_bthome()
+        assert issue(hass, entry, "encryption_changed") and entry.runtime_data._unwatch is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_encryption_changed_is_watched_after_a_restart_and_unwatched_on_unload(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    sensor = bthome_sensor(hass)
+    hass.states.async_set(sensor, "unavailable")
+    entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=SAMPLE))
+    try:
+        await encrypt(hass)
+        assert await hass.config_entries.async_reload(entry.entry_id)  # the issue outlives the reload
+        await hass.async_block_till_done()
+        store = entry.runtime_data
+        assert issue(hass, entry, "encryption_changed") and store._unwatch is not None
+        assert await hass.config_entries.async_unload(entry.entry_id)
+        assert store._unwatch is None
+        hass.states.async_set(sensor, "20")
+        await hass.async_block_till_done()
+        assert issue(hass, entry, "encryption_changed")  # nobody watching while unloaded
+    finally:
+        [c.stop() for c in ctx]
+
+
+DEFAULTS = bytes([0x55, 0x59, 0x01, 0x00, 0x04, 0x06, 0x01, 0x03, 0xA9, 0x13, 0x37, 0x0A, 0x00])
+
+
+async def reset(hass, client):
+    client.default_cfg = DEFAULTS
+    entry, calls, ctx = await setup_cfg_entry(hass, client)
+    button = ent(hass, "button", "reset_defaults")
+    er.async_get(hass).async_update_entity(button, disabled_by=None)
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    await hass.services.async_call("button", "press", {"entity_id": button}, blocking=True)
+    return entry, ctx
+
+
+async def start_flow(hass, issue_id):
+    assert await async_setup_component(hass, "repairs", {})
+    mgr = hass.data["repairs"]["flow_manager"]
+    return mgr, await mgr.async_init(DOMAIN, context={"issue_id": issue_id})
+
+
+async def test_reset_defaults_repair_flow_restores_and_clears(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    entry, ctx = await reset(hass, FakeClient(cfg=SAMPLE))
+    try:
+        client_cfg = entry.runtime_data
+        assert cfg.get(client_cfg.raw, "adv_interval") == 1
+        mgr, flow = await start_flow(hass, f"reset_defaults_{entry.entry_id}")
+        assert flow["type"] == "form" and flow["step_id"] == "confirm"
+        result = await mgr.async_configure(flow["flow_id"], {})
+        assert result["type"] == "create_entry"
+        assert cfg.get(client_cfg.raw, "adv_interval") == 16
+        assert issue(hass, entry, "reset_defaults") is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_reset_defaults_repair_flow_failure_keeps_the_issue(
+    hass: HomeAssistant, enable_bluetooth, fast_batch, monkeypatch
+):
+    entry, ctx = await reset(hass, FakeClient(cfg=SAMPLE))
+    try:
+        store = entry.runtime_data
+
+        async def fail():
+            from homeassistant.exceptions import HomeAssistantError
+
+            raise HomeAssistantError("boom")
+
+        monkeypatch.setattr(store, "async_restore", fail)
+        mgr, flow = await start_flow(hass, f"reset_defaults_{entry.entry_id}")
+        result = await mgr.async_configure(flow["flow_id"], {})
+        assert result["type"] == "form" and result["errors"] == {"base": "restore_failed"}
+        assert issue(hass, entry, "reset_defaults")
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_reset_defaults_repair_flow_aborts_without_a_snapshot(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    entry, ctx = await reset(hass, FakeClient(cfg=SAMPLE))
+    try:
+        hass.config_entries.async_update_entry(entry, data={k: v for k, v in entry.data.items() if k != "cfg_snapshot"})
+        mgr, flow = await start_flow(hass, f"reset_defaults_{entry.entry_id}")
+        assert flow["type"] == "abort" and flow["reason"] == "cannot_restore"
+        assert issue(hass, entry, "reset_defaults")
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_restore_button_clears_reset_defaults(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    entry, ctx = await reset(hass, FakeClient(cfg=SAMPLE))
+    try:
+        assert issue(hass, entry, "reset_defaults")
+        await hass.services.async_call(
+            "button", "press", {"entity_id": ent(hass, "button", "restore_config")}, blocking=True
+        )
+        assert issue(hass, entry, "reset_defaults") is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_both_issues_are_removed_with_the_entry(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=SAMPLE))
+    try:
+        for key in ("encryption_changed", "reset_defaults"):
+            entry.runtime_data._issue(key)
+        await hass.config_entries.async_remove(entry.entry_id)
+        reg = ir.async_get(hass)
+        assert not [i for i in reg.issues.values() if i[0] == DOMAIN]
+    finally:
+        [c.stop() for c in ctx]
+
+
+def crypto_client(on: bool, key: bytes = bytes(range(1, 17))):
+    client = FakeClient(cfg=SAMPLE)
+    client.cfg = SAMPLE[:2] + cfg.apply(SAMPLE, {"adv_crypto": int(on)}, 10, frozenset({"adv_crypto"}))
+    client.bindkey = key if on else bytes(16)
+    return client
+
+
+@pytest.mark.parametrize(
+    "on,enable,key,raised",
+    [
+        (True, True, bytes(range(1, 17)).hex(), False),  # same key, flag already on
+        (True, True, KEY, True),  # another key
+        (True, False, None, True),  # switched off
+        (False, False, None, False),  # already off
+        (False, True, bytes(range(1, 17)).hex(), True),  # flag turns on
+    ],
+)
+async def test_set_encryption_raises_the_issue_only_for_a_real_change(
+    hass: HomeAssistant, enable_bluetooth, fast_batch, on, enable, key, raised
+):
+    client = crypto_client(on)
+    entry, calls, ctx = await setup_cfg_entry(hass, client)
+    try:
+        data = {"entity_id": UPDATE, "enable": enable, **({"key": key} if key else {})}
+        res = await hass.services.async_call(DOMAIN, "set_encryption", data, blocking=True, return_response=True)
+        assert res[UPDATE]["encryption"] is enable
+        assert bool(issue(hass, entry, "encryption_changed")) is raised
+        assert cfg.get(client.cfg, "adv_crypto") == int(enable)
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_set_encryption_without_a_change_keeps_an_open_issue(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    client = crypto_client(False)
+    entry, calls, ctx = await setup_cfg_entry(hass, client)
+    try:
+        entry.runtime_data._issue("encryption_changed")
+        await hass.services.async_call(
+            DOMAIN, "set_encryption", {"entity_id": UPDATE, "enable": False}, blocking=True, return_response=True
+        )
+        assert issue(hass, entry, "encryption_changed")
+    finally:
+        [c.stop() for c in ctx]

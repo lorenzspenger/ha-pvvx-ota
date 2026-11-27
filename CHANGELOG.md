@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **"Advert encryption changed" is a repair issue again**; it clears when Home Assistant receives the next reading from the sensor through BTHome.
+- **"Settings were reset to defaults" is a repair issue again**; its dialog restores the previous settings, and the issue clears after restoring (also with the *Restore previous settings* button).
+- **`set_encryption` raises the "advert encryption changed" issue only when the encryption flag or the key actually changes.**
+
 ## 0.25.0-beta.1
 
 Git tag `v0.25.0-beta.1`, manifest version `0.25.0b1`.

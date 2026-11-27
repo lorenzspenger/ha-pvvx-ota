@@ -225,7 +225,7 @@
     },
     "encryption_changed": {
       "title": "{name}: Advert-Verschlüsselung geändert",
-      "description": "Die Verschlüsselung der Adverts des Sensors wurde umgeschaltet. Der BTHome-Eintrag dieses Sensors in Home Assistant muss den passenden Bindkey haben (oder keinen, wenn die Verschlüsselung aus ist), sonst gehen die Daten verloren. Diese Integration ändert den Eintrag nicht."
+      "description": "Die Verschlüsselung der Adverts des Sensors wurde umgeschaltet. Der BTHome-Eintrag dieses Sensors in Home Assistant muss den passenden Bindkey haben (oder keinen, wenn die Verschlüsselung aus ist), sonst gehen die Daten verloren. Diese Integration ändert den Eintrag nicht. Das Problem verschwindet von selbst, sobald Home Assistant wieder einen Messwert des Sensors über BTHome empfängt; bleibt es bestehen, prüfe den Bindkey des BTHome-Eintrags."
     },
     "pin_bond_lost": {
       "title": "{name}: Kopplung verloren, am Proxy neu koppeln",
@@ -241,7 +241,21 @@
     },
     "reset_defaults": {
       "title": "{name}: Einstellungen auf Standard zurückgesetzt",
-      "description": "Die Konfiguration des Sensors wurde zurückgesetzt. Advertising-Typ und Verschlüsselung können sich geändert haben, prüfe daher den BTHome-Eintrag in Home Assistant. Die vorherigen Einstellungen lassen sich mit der Schaltfläche „Vorherige Einstellungen wiederherstellen“ zurückschreiben (außer dem Verschlüsselungs-Flag)."
+      "description": "Die Konfiguration des Sensors wurde zurückgesetzt. Advertising-Typ und Verschlüsselung können sich geändert haben, prüfe daher den BTHome-Eintrag in Home Assistant. Wähle in diesem Dialog „Senden“ (oder drücke die Schaltfläche „Vorherige Einstellungen wiederherstellen“), um die vorherigen Einstellungen zurückzuschreiben (außer dem Verschlüsselungs-Flag). Das Problem verschwindet von selbst, sobald sie wiederhergestellt sind.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Vorherige Einstellungen wiederherstellen",
+            "description": "Die vor dem Zurücksetzen von {name} gespeicherten Einstellungen werden auf den Sensor zurückgeschrieben (außer dem Verschlüsselungs-Flag)."
+          }
+        },
+        "error": {
+          "restore_failed": "Der Sensor hat die Einstellungen nicht übernommen. Prüfe, ob er in Reichweite ist, und versuche es erneut."
+        },
+        "abort": {
+          "cannot_restore": "Es gibt keine gespeicherten Einstellungen zum Wiederherstellen, oder der Sensor ist gerade nicht eingerichtet."
+        }
+      }
     },
     "encryption_restore_failed": {
       "title": "{name}: Verschlüsselung wurde nicht wieder eingeschaltet",

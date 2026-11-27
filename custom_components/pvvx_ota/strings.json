@@ -225,7 +225,7 @@
     },
     "encryption_changed": {
       "title": "{name}: advert encryption changed",
-      "description": "Encryption of the sensor's adverts was switched. Home Assistant's BTHome entry for this sensor must have the matching bindkey (or none when encryption is off), otherwise its data is lost. This integration does not change that entry."
+      "description": "Encryption of the sensor's adverts was switched. Home Assistant's BTHome entry for this sensor must have the matching bindkey (or none when encryption is off), otherwise its data is lost. This integration does not change that entry. This issue clears by itself as soon as Home Assistant receives a reading from the sensor through BTHome again; if it stays, check the BTHome entry's bindkey."
     },
     "pin_bond_lost": {
       "title": "{name}: pairing lost, pair again from the proxy",
@@ -241,7 +241,21 @@
     },
     "reset_defaults": {
       "title": "{name}: settings were reset to defaults",
-      "description": "The sensor's configuration was reset. Advertising type and encryption may differ from before, so check Home Assistant's BTHome entry. The previous settings can be written back with the 'Restore previous settings' button (not the encryption flag)."
+      "description": "The sensor's configuration was reset. Advertising type and encryption may differ from before, so check Home Assistant's BTHome entry. Select Submit in this dialog (or press the 'Restore previous settings' button) to write the previous settings back (not the encryption flag). This issue clears by itself once they are restored.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Restore the previous settings",
+            "description": "The settings saved before the reset of {name} are written back to the sensor (not the encryption flag)."
+          }
+        },
+        "error": {
+          "restore_failed": "The sensor did not accept the settings. Check that it is in range and try again."
+        },
+        "abort": {
+          "cannot_restore": "There are no saved settings to restore, or the sensor is not set up at the moment."
+        }
+      }
     },
     "encryption_restore_failed": {
       "title": "{name}: encryption was not switched back on",

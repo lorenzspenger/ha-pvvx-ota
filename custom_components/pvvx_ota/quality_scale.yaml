@@ -138,7 +138,7 @@ rules:
     comment: A PIN-bonded sensor can store or change its PIN (reconfigure); other sensors have no settings to reconfigure.
   repair-issues:
     status: done
-    comment: Repair issues for a failed or unconfirmed flash, a PIN set, a lost bond, encryption changed or not restored, advertising type changed, settings reset or different after a flash.
+    comment: Repair issues for a failed or unconfirmed flash, a PIN set, a lost bond, encryption changed or not restored, advertising type changed, settings reset (fixable: restores the previous settings) or different after a flash.
   stale-devices:
     status: exempt
     comment: Each config entry is one sensor, a single fixed device that is removed with its entry, so no device can go stale.
