@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.25.0-beta.1
+
+Git tag `v0.25.0-beta.1`, manifest version `0.25.0b1`.
 
 - **"Advert encryption changed" and "settings were reset to defaults" are notifications instead of repair issues**; existing ones are removed.
 - **Switching encryption on with `set_encryption` clears the "encryption was not switched back on" repair issue.**
