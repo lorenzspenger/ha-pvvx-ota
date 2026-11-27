@@ -160,6 +160,15 @@ class ConfigStore:
             self._clear_issue("encryption_restore_failed")
         if not self.can_restore:
             self._clear_issue("settings_differ_after_flash")
+        if self._matches_snapshot(raw):
+            self._clear_issue("reset_defaults")
+
+    def _matches_snapshot(self, raw: bytes | None) -> bool:
+        """A snapshot exists and no restorable field of this block differs from it (encryption is not part of this)."""
+        snap = self.snapshot
+        if not snap or raw is None or not cfgmod.is_verified(raw):
+            return False
+        return all(cfgmod.get(raw, k) == v for k, v in self._restorable(snap).items())
 
     @callback
     def take_snapshot(self) -> None:
@@ -385,7 +394,8 @@ class ConfigStore:
         await self._restore_encryption(
             snap
         )  # the flag only, and only when it was on; a failure is its own repair issue
-        self._clear_issue("reset_defaults")
+        if self._matches_snapshot(self.raw):
+            self._clear_issue("reset_defaults")  # only when the read-back shows the old settings again
         self._update_settings_issue()
 
     # -- after a flash --------------------------------------------------

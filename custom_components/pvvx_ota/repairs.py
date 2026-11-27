@@ -9,7 +9,9 @@ from homeassistant.components.repairs import RepairsFlow, RepairsFlowResult
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import issue_registry as ir
 
+from .const import DOMAIN
 from .store import ConfigStore
 
 
@@ -40,7 +42,9 @@ class RestoreSettingsRepairFlow(RepairsFlow):
             except HomeAssistantError:
                 errors["base"] = "restore_failed"
             else:
-                return self.async_create_entry(data={})
+                if ir.async_get(self.hass).async_get_issue(DOMAIN, self.issue_id) is None:
+                    return self.async_create_entry(data={})
+                errors["base"] = "restore_failed"  # written, but the sensor still differs from the saved settings
         schema: Any = vol.Schema({})  # voluptuous, which Home Assistant still accepts
         return self.async_show_form(
             step_id="confirm", data_schema=schema, errors=errors, description_placeholders={"name": store.name}

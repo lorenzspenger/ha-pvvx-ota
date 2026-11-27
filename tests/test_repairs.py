@@ -287,3 +287,36 @@ async def test_restore_leaves_encryption_alone_when_the_snapshot_had_it_off(
         assert issue(hass, entry, "encryption_restore_failed") is None
     finally:
         [c.stop() for c in ctx]
+
+
+async def test_reset_defaults_stays_while_the_settings_still_differ(
+    hass: HomeAssistant, enable_bluetooth, fast_batch, monkeypatch
+):
+    entry, ctx = await reset(hass, FakeClient(cfg=SAMPLE))
+    try:
+        store = entry.runtime_data
+
+        async def nothing(changes):  # the sensor did not take the values
+            return None
+
+        monkeypatch.setattr(store, "async_request", nothing)
+        await store.async_restore()
+        assert issue(hass, entry, "reset_defaults")
+        mgr, flow = await start_flow(hass, f"reset_defaults_{entry.entry_id}")
+        result = await mgr.async_configure(flow["flow_id"], {})
+        assert result["type"] == "form" and result["errors"] == {"base": "restore_failed"}
+        assert issue(hass, entry, "reset_defaults")
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_a_read_with_the_saved_settings_clears_reset_defaults(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    client = FakeClient(cfg=SAMPLE)
+    entry, ctx = await reset(hass, client)
+    try:
+        assert issue(hass, entry, "reset_defaults")
+        client.cfg = SAMPLE  # put back with another tool
+        await entry.runtime_data.async_refresh()
+        assert issue(hass, entry, "reset_defaults") is None
+    finally:
+        [c.stop() for c in ctx]
