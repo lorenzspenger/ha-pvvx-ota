@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **The *firmware not verified* repair issue has its text** (English and German).
+- **The PIN pairing steps say "30 to 40 seconds"** instead of "about 25 seconds".
+- **The `flash_latest` action description** says what it does: flash the latest release or the named `version`, with `status_every` and `force`.
 - **`docs/usage.md` rewritten from the current code.** Corrections in the troubleshooting, PIN sensor, known limitations, supported functions, data update and design notes pages.
 
 ## 0.26.0-beta.4

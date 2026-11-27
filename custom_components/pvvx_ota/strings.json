@@ -13,21 +13,21 @@
       },
       "pin": {
         "title": "PIN needed (experimental)",
-        "description": "{name} has a PIN and no proxy has paired with it yet. Enter the PIN: Home Assistant hands it to a Bluetooth proxy that offers the pairing action (the proxy pairs with the sensor and keeps the bond). This takes about 25 seconds. The PIN is stored in this entry so that pairing can be repeated if the proxy loses the bond.",
+        "description": "{name} has a PIN and no proxy has paired with it yet. Enter the PIN: Home Assistant hands it to a Bluetooth proxy that offers the pairing action (the proxy pairs with the sensor and keeps the bond). This takes about 30 to 40 seconds. The PIN is stored in this entry so that pairing can be repeated if the proxy loses the bond.",
         "data": {
           "pin": "PIN (1 to 999999)"
         }
       },
       "reauth_confirm": {
         "title": "PIN needed again",
-        "description": "{name} refuses the link and no PIN is stored for it (or the stored one no longer works), so its pairing with the Bluetooth proxy was lost. Enter the PIN: Home Assistant hands it to a proxy that offers the pairing action, which pairs with the sensor again. This takes about 25 seconds.",
+        "description": "{name} refuses the link and no PIN is stored for it (or the stored one no longer works), so its pairing with the Bluetooth proxy was lost. Enter the PIN: Home Assistant hands it to a proxy that offers the pairing action, which pairs with the sensor again. This takes about 30 to 40 seconds.",
         "data": {
           "pin": "PIN (1 to 999999)"
         }
       },
       "reconfigure": {
         "title": "Store the PIN",
-        "description": "Store the PIN of {name} so that Home Assistant can pair it again by itself if the proxy loses the pairing. If a PIN was set on the sensor after it was added, this pairs it for the first time. The sensor is paired through a proxy that offers the pairing action now; this takes about 25 seconds.",
+        "description": "Store the PIN of {name} so that Home Assistant can pair it again by itself if the proxy loses the pairing. If a PIN was set on the sensor after it was added, this pairs it for the first time. The sensor is paired through a proxy that offers the pairing action now; this takes about 30 to 40 seconds.",
         "data": {
           "pin": "PIN (1 to 999999)"
         }
@@ -76,7 +76,7 @@
     },
     "flash_latest": {
       "name": "Flash latest release or a chosen version",
-      "description": "Flashes the latest release image for this sensor even if it is up to date, or the release named in version (also an older one). Used to tune the flash speed.",
+      "description": "Flashes the latest release image for this sensor even if it is up to date, or the release named in version (also an older one). status_every sets how often the status is read and force skips the battery check.",
       "fields": {
         "status_every": {
           "name": "Status interval",
@@ -297,6 +297,10 @@
     "flash_failed": {
       "title": "{name}: firmware update failed",
       "description": "The last firmware operation on this sensor failed: {error}. The sensor keeps running its old firmware (a failed transfer is not applied). Move a Bluetooth proxy closer, check the sensor's battery and try again; the issue clears itself after the next successful flash or once a read shows the latest firmware."
+    },
+    "firmware_unverified": {
+      "title": "{name}: firmware not verified",
+      "description": "{name} runs firmware V{version}, which this integration has not verified. Encryption and settings were not restored or checked after the flash, and the settings entities are unavailable. Check the BTHome entry (encryption) and the settings with another tool, or flash a verified version (for example with update.install and version). This issue clears by itself once the sensor runs a verified version."
     },
     "flash_unconfirmed": {
       "title": "{name}: flash may not have been applied",

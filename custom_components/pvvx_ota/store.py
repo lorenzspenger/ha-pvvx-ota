@@ -369,7 +369,7 @@ class ConfigStore:
 
     async def async_first_read(self, delay: float = 0.0) -> None:
         """Background read after setup: authenticated, under the shared lock like every connection. A failure leaves the
-        settings entities unavailable and is retried after FIRST_READ_RETRY; after that the update entity's 12 h poll (or the
+        settings entities unavailable and is retried after FIRST_READ_RETRY; after that the update entity's version read (every 3 days by default, or the
         Refresh button) fills them in."""
         if delay:
             await asyncio.sleep(delay)

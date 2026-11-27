@@ -13,21 +13,21 @@
       },
       "pin": {
         "title": "PIN erforderlich (experimentell)",
-        "description": "{name} hat eine PIN und noch kein Proxy hat sich mit ihm gekoppelt. Gib die PIN ein: Home Assistant übergibt sie einem Bluetooth-Proxy, der die Koppel-Aktion anbietet (der Proxy koppelt mit dem Sensor und behält die Kopplung). Das dauert etwa 25 Sekunden. Die PIN wird in diesem Eintrag gespeichert, damit die Kopplung wiederholt werden kann, falls der Proxy sie verliert.",
+        "description": "{name} hat eine PIN und noch kein Proxy hat sich mit ihm gekoppelt. Gib die PIN ein: Home Assistant übergibt sie einem Bluetooth-Proxy, der die Koppel-Aktion anbietet (der Proxy koppelt mit dem Sensor und behält die Kopplung). Das dauert etwa 30 bis 40 Sekunden. Die PIN wird in diesem Eintrag gespeichert, damit die Kopplung wiederholt werden kann, falls der Proxy sie verliert.",
         "data": {
           "pin": "PIN (1 bis 999999)"
         }
       },
       "reauth_confirm": {
         "title": "PIN erneut erforderlich",
-        "description": "{name} verweigert die Verbindung und für ihn ist keine PIN gespeichert (oder die gespeicherte funktioniert nicht mehr), daher ging die Kopplung mit dem Bluetooth-Proxy verloren. Gib die PIN ein: Home Assistant übergibt sie einem Proxy, der die Koppel-Aktion anbietet und den Sensor neu koppelt. Das dauert etwa 25 Sekunden.",
+        "description": "{name} verweigert die Verbindung und für ihn ist keine PIN gespeichert (oder die gespeicherte funktioniert nicht mehr), daher ging die Kopplung mit dem Bluetooth-Proxy verloren. Gib die PIN ein: Home Assistant übergibt sie einem Proxy, der die Koppel-Aktion anbietet und den Sensor neu koppelt. Das dauert etwa 30 bis 40 Sekunden.",
         "data": {
           "pin": "PIN (1 bis 999999)"
         }
       },
       "reconfigure": {
         "title": "PIN speichern",
-        "description": "Speichere die PIN von {name}, damit Home Assistant ihn selbst neu koppeln kann, falls der Proxy die Kopplung verliert. Wurde die PIN erst nach dem Hinzufügen auf dem Sensor gesetzt, wird er hier zum ersten Mal gekoppelt. Die Kopplung läuft über einen Proxy, der die Koppel-Aktion anbietet; das dauert etwa 25 Sekunden.",
+        "description": "Speichere die PIN von {name}, damit Home Assistant ihn selbst neu koppeln kann, falls der Proxy die Kopplung verliert. Wurde die PIN erst nach dem Hinzufügen auf dem Sensor gesetzt, wird er hier zum ersten Mal gekoppelt. Die Kopplung läuft über einen Proxy, der die Koppel-Aktion anbietet; das dauert etwa 30 bis 40 Sekunden.",
         "data": {
           "pin": "PIN (1 bis 999999)"
         }
@@ -76,7 +76,7 @@
     },
     "flash_latest": {
       "name": "Neueste oder gewählte Version flashen",
-      "description": "Flasht das neueste Release-Image für diesen Sensor, auch wenn er schon aktuell ist, oder das unter Version genannte Release (auch ein älteres). Dient zum Abstimmen der Flash-Geschwindigkeit.",
+      "description": "Flasht das neueste Release-Image für diesen Sensor, auch wenn er schon aktuell ist, oder das unter Version genannte Release (auch ein älteres). Mit status_every stellst du ein, wie oft der Status gelesen wird, und force übergeht die Batterieprüfung.",
       "fields": {
         "status_every": {
           "name": "Statusintervall",
@@ -297,6 +297,10 @@
     "flash_failed": {
       "title": "{name}: Firmware-Update fehlgeschlagen",
       "description": "Der letzte Firmware-Vorgang an diesem Sensor ist fehlgeschlagen: {error}. Der Sensor läuft weiter mit der alten Firmware (eine abgebrochene Übertragung wird nicht übernommen). Stelle einen Bluetooth-Proxy näher an den Sensor, prüfe die Batterie und versuche es erneut; die Meldung verschwindet nach dem nächsten erfolgreichen Flash oder sobald ein Lesen die neueste Firmware zeigt von selbst."
+    },
+    "firmware_unverified": {
+      "title": "{name}: Firmware nicht geprüft",
+      "description": "{name} läuft mit der Firmware V{version}, die diese Integration nicht geprüft hat. Verschlüsselung und Einstellungen wurden nach dem Flash weder wiederhergestellt noch geprüft, und die Einstellungs-Entitäten sind nicht verfügbar. Prüfe den BTHome-Eintrag (Verschlüsselung) und die Einstellungen mit einem anderen Werkzeug, oder flashe eine geprüfte Version (zum Beispiel mit update.install und version). Dieses Problem verschwindet von selbst, sobald der Sensor eine geprüfte Version nutzt."
     },
     "flash_unconfirmed": {
       "title": "{name}: Flash wurde möglicherweise nicht übernommen",

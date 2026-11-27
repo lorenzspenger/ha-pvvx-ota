@@ -56,3 +56,55 @@ def test_calls_pass_the_placeholders_their_text_uses():
 def test_no_url_in_a_message():  # hassfest: URLs go through placeholders
     for path in ("strings.json", "translations/en.json", "translations/de.json"):
         assert not [k for k, v in messages(path).items() if "http" in v], path
+
+
+# -- repair issues ---------------------------------------------------------
+ISSUE_SPECIAL = {  # created outside Store._issue: key -> placeholders the call passes
+    "flash_failed": {"name", "error"},
+    "pin_pairing_failed": {"name", "address", "flasher_url"},
+}
+
+
+def issue_keys_in_code() -> dict[str, set[str]]:
+    """Every issue key created in the package, with the placeholders its call site passes."""
+    found: dict[str, set[str]] = {}
+    for path in PKG.glob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(node, ast.Call):
+                continue
+            name = getattr(node.func, "attr", None)
+            if name == "_issue" and node.args and isinstance(node.args[0], ast.Constant):
+                extra = {kw.arg for kw in node.keywords if kw.arg and kw.arg != "fixable"}
+                found.setdefault(node.args[0].value, set()).update({"name"} | extra)
+            elif name == "async_create_issue":
+                for kw in node.keywords:
+                    if kw.arg == "translation_key" and isinstance(kw.value, ast.Constant):
+                        found.setdefault(kw.value.value, set()).update(ISSUE_SPECIAL.get(kw.value.value, set()))
+    return found
+
+
+def test_every_repair_issue_has_a_title_and_text_in_all_languages():
+    keys = set(const_issue_keys()) | set(ISSUE_SPECIAL) | set(issue_keys_in_code())
+    assert keys >= {"firmware_unverified", "flash_failed", "pin_pairing_failed"}
+    for path in ("strings.json", "translations/en.json", "translations/de.json"):
+        issues = json.loads((PKG / path).read_text())["issues"]
+        for key in keys:
+            assert key in issues, (path, key)
+            assert issues[key].get("title"), (path, key)
+            assert issues[key].get("description") or issues[key].get("fix_flow"), (path, key)
+
+
+def const_issue_keys() -> tuple[str, ...]:
+    from custom_components.pvvx_ota import ISSUE_KEYS
+
+    return ISSUE_KEYS
+
+
+def test_repair_issue_texts_use_only_placeholders_the_call_passes():
+    calls = issue_keys_in_code()
+    assert set(const_issue_keys()) <= set(calls)  # every cleared key is raised somewhere
+    for path in ("strings.json", "translations/en.json", "translations/de.json"):
+        issues = json.loads((PKG / path).read_text())["issues"]
+        for key, passed in calls.items():
+            text = issues[key].get("title", "") + issues[key].get("description", "")
+            assert set(re.findall(r"{(\w+)}", text)) <= passed | {"name"}, (path, key)
