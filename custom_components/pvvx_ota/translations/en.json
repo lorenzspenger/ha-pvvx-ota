@@ -305,6 +305,10 @@
     "flash_unconfirmed": {
       "title": "{name}: flash may not have been applied",
       "description": "The firmware was sent, but the new version could not be read back afterwards, so it is not known whether the flash was applied. The installed version shown may be out of date. Check that the sensor advertises again (a battery pull restarts it), then press Refresh; the issue clears itself when the sensor answers with the new version."
+    },
+    "pairing_package_outdated": {
+      "title": "{proxy}: pairing package out of date",
+      "description": "The ESPHome pairing package on the proxy {proxy} is older than this integration expects (or has no version). Pairing still works, but newer features and error detection may be missing. Update the package in the proxy's YAML and compile it again (see the PIN sensor documentation). It clears by itself when a later pairing finds the current version."
     }
   },
   "entity": {

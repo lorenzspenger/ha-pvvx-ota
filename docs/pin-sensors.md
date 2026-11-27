@@ -14,17 +14,37 @@ Give one proxy the pairing package [`esphome/pvvx_pin_pairing.yaml`](../esphome/
 
 ```yaml
 packages:
-  pvvx_pin_pairing: github://lorenzspenger/ha-pvvx-ota/esphome/pvvx_pin_pairing.yaml@main   # or @v0.24.0
+  pvvx_pin_pairing: github://lorenzspenger/ha-pvvx-ota/esphome/pvvx_pin_pairing.yaml@main   # or a release tag: @v<release>
 
 esp32_ble:
   max_connections: 4   # the proxy's connection slots + other ble_clients + 1 for the pairer
 ```
 
+Two ways to reference the package:
+
+* `@main`: always the current file; changes to the package arrive with every compile of the proxy, independent of the integration version.
+* `@v<release>` (a release tag, for example `@v0.26.0`): a fixed file that changes only when you change the tag. After an integration update that changes the package, raise the tag; the integration's *pairing package out of date* repair issue says when.
+
 `max_connections` must leave room for one more connection than the proxy needs without the package: with the proxy's 3 slots and no other `ble_client` that is 4. The package sets `io_capability: keyboard_only` and `auth_req_mode: sc_mitm_bond`, which apply to every pairing this ESP32 does (peripherals without input or output still pair Just Works). You can also download the file and include it locally (`packages: !include pvvx_pin_pairing.yaml`).
 
-When you add a PIN sensor and it refuses the first read, the flow asks for the PIN, calls the proxy's `pair_pvvx` action (the `esphome.<proxy>_pair_pvvx` action) with the MAC and the PIN, waits for the proxy to pair (30 to 40 seconds), and reads through that proxy. The PIN is kept in the entry (redacted in diagnostics, never logged) so that the pairing is repeated automatically if the proxy loses the bond. The proxy that hears the sensor best and offers the action is used. If none offers it, the sensor is ignored with a hint to come back here. The package adds two diagnostic entities to the proxy: *pvvx pairer busy* and *pvvx pair result*.
+When you add a PIN sensor and it refuses the first read, the flow asks for the PIN, calls the proxy's `pair_pvvx` action (the `esphome.<proxy>_pair_pvvx` action) with the MAC and the PIN, waits for the proxy to pair (30 to 40 seconds), and reads through that proxy. The PIN is kept in the entry (redacted in diagnostics, never logged) so that the pairing is repeated automatically if the proxy loses the bond. The proxy that hears the sensor best and offers the action is used. If none offers it, the sensor is ignored with a hint to come back here. The package adds three diagnostic entities to the proxy: *pvvx pairer busy*, *pvvx pair result* and *pvvx package version*. The integration finds them by the names the package gives them (renaming one in Home Assistant is fine). If the version is missing or lower than the integration expects, pairing still runs, one warning is logged per proxy and the *pairing package out of date* repair issue appears; it clears when a later pairing finds the current version. A run that hangs is stopped by the package after 90 s (result `timeout`); the integration treats that like *no connection* and retries once.
 
 When the sensor's entry is removed from Home Assistant, the integration calls the proxy's `forget_pvvx` action (package from v0.23.0-beta.3) so that the bond does not stay in the proxy's flash and in the sensor's small bond table. A proxy with an older package has no such action: the bond stays until you update the package or erase the proxy's flash, and the integration logs that at INFO.
+
+### Experimental rescue: `pvvx_clear_pin`
+
+> **Experimental.** For a sensor whose pairing is broken: the pairing succeeds but the sensor refuses every later encrypted link, and TelinkMiFlasher is not at hand. To remove the PIN of a sensor whose pairing works, use `pvvx_ota.set_pin` with 0.
+
+The package offers a second action, `pvvx_clear_pin(mac, pin)`. The proxy pairs with the sensor using the PIN, writes the clear-PIN command on that freshly authenticated link and disconnects; the sensor then has no PIN and an empty pairing table. Call it from *Developer tools > Actions* (YAML mode), with the node name of your proxy:
+
+```yaml
+action: esphome.<node>_pvvx_clear_pin
+data:
+  mac: "AA:BB:CC:DD:EE:FF"
+  pin: 123456
+```
+
+The result shows in the proxy's *pvvx pair result* entity: `pin clear sent` (the command was written on an open link), `clear not sent` (the link dropped before the write) or `timeout`. Afterwards add the sensor to Home Assistant without a PIN, and set one again with `pvvx_ota.set_pin` if you want it.
 
 ### By hand: a fixed ble_client and a pair button
 

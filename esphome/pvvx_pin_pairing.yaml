@@ -5,12 +5,22 @@
 #
 #   packages:
 #     pvvx_pin_pairing: github://lorenzspenger/ha-pvvx-ota/esphome/pvvx_pin_pairing.yaml@main
-#   # (pin a tag instead of main once releases exist, for example @v0.24.0)
+#   # or a release tag instead of main: ...pvvx_pin_pairing.yaml@v<release>
+#
+#   @main is always the current file: changes arrive with every compile of the proxy.
+#   @v<release> is fixed: raise the tag after an integration update that changes the package (the integration's repair
+#   issue "pairing package out of date" says when).
 #
 #   esp32_ble:
 #     max_connections: <proxy slots + other ble_clients + 1>
 # (the package sets io_capability and auth_req_mode itself; they affect every pairing this ESP32 does: peripherals
 # without input/output still pair Just Works).
+esphome:
+  on_boot:
+    - text_sensor.template.publish:
+        id: pvvx_package_version
+        state: "2"
+
 esp32_ble:
   io_capability: keyboard_only
   auth_req_mode: sc_mitm_bond
@@ -44,6 +54,14 @@ binary_sensor:
     # Its state is unknown until the first pairing; unknown counts as idle.
 
 text_sensor:
+  - platform: template
+    id: pvvx_package_version
+    name: "pvvx package version"
+    icon: mdi:tag-outline
+    entity_category: diagnostic
+    # The integration compares this with the version it expects (PAIRING_PACKAGE_VERSION). Raise it on every change to the
+    # actions, their parameters or the result texts.
+    update_interval: never   # published once at boot (see esphome: on_boot below)
   - platform: template
     id: pvvx_pair_result
     name: "pvvx pair result"

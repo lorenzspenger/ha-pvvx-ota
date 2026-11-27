@@ -25,6 +25,7 @@ from custom_components.pvvx_ota.const import (
     CONF_PIN_BONDED,
     CONF_VERSION,
     DOMAIN,
+    PAIRING_PACKAGE_VERSION,
 )
 from custom_components.pvvx_ota.diagnostics import async_get_config_entry_diagnostics
 from custom_components.pvvx_ota.ota import PairingRequiredError
@@ -520,6 +521,56 @@ async def test_busy_and_result_entities_are_found_through_the_nodes_config_entry
     assert pairing.busy_entity(hass, "proxy-2") is None  # a node whose package has no such entity
 
 
+async def test_a_user_renamed_entity_is_still_found(hass: HomeAssistant):
+    entry = esphome_node(hass)
+    busy = node_entity(hass, entry, "binary_sensor", "pvvx pairer busy", "busy")
+    er.async_get(hass).async_update_entity(busy, name="Pairer is busy")
+    assert pairing.busy_entity(hass, NODE) == busy
+    other = node_entity(hass, entry, "binary_sensor", "Fan", "fan")
+    er.async_get(hass).async_update_entity(other, name="pvvx pairer busy")  # a user name alone never matches
+    assert pairing.busy_entity(hass, NODE) == busy
+
+
+def package_issue(hass, node=NODE):
+    return ir.async_get(hass).async_get_issue(DOMAIN, f"pairing_package_outdated_{node.replace('-', '_')}")
+
+
+async def test_outdated_or_missing_package_version_raises_one_warning_and_a_repair_issue(hass: HomeAssistant, caplog):
+    entry = esphome_node(hass)  # no version entity: an older package
+    pairing.check_package_version(hass, NODE)
+    pairing.check_package_version(hass, NODE)
+    assert caplog.text.count("older than this integration expects") == 1
+    issue = package_issue(hass)
+    assert issue is not None and issue.translation_placeholders == {"proxy": NODE} and issue.is_persistent
+    version = node_entity(hass, entry, "sensor", "pvvx package version", "version")
+    er.async_get(hass).async_update_entity(version, name="Package")  # renamed by the user: still found
+    hass.states.async_set(version, "unavailable")  # proxy offline: no verdict
+    pairing.check_package_version(hass, NODE)
+    assert package_issue(hass) is not None
+    hass.states.async_set(version, "1")
+    pairing.check_package_version(hass, NODE)
+    assert package_issue(hass) is not None
+    hass.states.async_set(version, "garbage")
+    pairing.check_package_version(hass, NODE)
+    assert package_issue(hass) is not None
+    hass.states.async_set(version, str(PAIRING_PACKAGE_VERSION))
+    pairing.check_package_version(hass, NODE)
+    assert package_issue(hass) is None  # a later pairing with the current package clears it
+    hass.states.async_set(version, str(PAIRING_PACKAGE_VERSION + 1))
+    pairing.check_package_version(hass, NODE)
+    assert package_issue(hass) is None
+
+
+async def test_pair_checks_the_package_version(hass: HomeAssistant, monkeypatch):
+    monkeypatch.setattr(pairing, "PAIR_BUSY_APPEAR", 0.01)
+    monkeypatch.setattr(pairing, "PAIR_AFTER_IDLE", 0.01)
+    entity_id = proxy_with_busy_entity(hass)
+    hass.states.async_set(entity_id, "off")
+    offer(hass, "proxy_1")
+    await pairing.async_pair(hass, PROXY_OFFER, MAC, SECRET_PIN, wait=0)
+    assert package_issue(hass) is not None  # the proxy has no version entity
+
+
 async def test_pair_waits_for_the_pairer_to_go_idle(hass: HomeAssistant, monkeypatch):
     import asyncio
 
@@ -584,6 +635,20 @@ async def test_pairer_that_never_reached_the_sensor_is_retried_then_reported(has
 
     hass.services.async_register("esphome", "proxy_1_pair_pvvx", handler)
     await pairing.async_pair(hass, PROXY_OFFER, MAC, SECRET_PIN, wait=0)
+    assert len(calls) == 2
+
+
+async def test_a_timeout_result_is_retried_like_no_connection(hass: HomeAssistant, monkeypatch):
+    monkeypatch.setattr(pairing, "PAIR_BUSY_APPEAR", 0.01)
+    monkeypatch.setattr(pairing, "PAIR_AFTER_IDLE", 0.01)
+    entry = esphome_node(hass)
+    busy = node_entity(hass, entry, "binary_sensor", "pvvx pairer busy", "busy")
+    result = node_entity(hass, entry, "sensor", "pvvx pair result", "result")
+    hass.states.async_set(busy, "off")
+    calls = offer(hass, "proxy_1")
+    hass.states.async_set(result, "timeout")
+    with raises_key("pair_connect_failed", pairing.PairConnectError):
+        await pairing.async_pair(hass, PROXY_OFFER, MAC, SECRET_PIN, wait=0)
     assert len(calls) == 2
 
 

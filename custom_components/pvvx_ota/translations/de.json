@@ -305,6 +305,10 @@
     "flash_unconfirmed": {
       "title": "{name}: Flash wurde möglicherweise nicht übernommen",
       "description": "Die Firmware wurde gesendet, aber die neue Version konnte danach nicht zurückgelesen werden; es ist daher nicht bekannt, ob der Flash übernommen wurde. Die angezeigte installierte Version ist möglicherweise veraltet. Prüfe, ob der Sensor wieder sendet (Batterie kurz entfernen startet ihn neu), und drücke dann Aktualisieren; das Problem verschwindet, sobald der Sensor mit der neuen Version antwortet."
+    },
+    "pairing_package_outdated": {
+      "title": "{proxy}: Kopplungspaket veraltet",
+      "description": "Das ESPHome-Kopplungspaket auf dem Proxy {proxy} ist älter, als diese Integration erwartet (oder hat keine Version). Die Kopplung funktioniert weiterhin, neuere Funktionen und die genaue Fehlererkennung können aber fehlen. Das Paket in der YAML des Proxys aktualisieren und neu kompilieren (siehe die Dokumentation zu PIN-Sensoren). Die Meldung verschwindet von selbst, wenn eine spätere Kopplung die aktuelle Version findet."
     }
   },
   "entity": {

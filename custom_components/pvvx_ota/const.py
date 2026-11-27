@@ -52,6 +52,7 @@ FORGET_ACTION = (
     "forget_pvvx"  # ESPHome API action (package v0.23.0-beta.3 and later) that removes a sensor's bond from the proxy
 )
 PAIR_ACTION = "pair_pvvx"  # ESPHome API action of esphome/pvvx_pin_pairing.yaml on a proxy
+PAIRING_PACKAGE_VERSION = 2  # value of the "pvvx package version" sensor of esphome/pvvx_pin_pairing.yaml this integration expects; raise both together
 PAIR_WAIT = 35.0  # fixed wait after calling it when the proxy has no "pvvx pairer busy" entity (older package): open + hold 20 s + close
 PAIR_BUSY_TIMEOUT = 45.0  # seconds to wait for that entity to go OFF again
 PAIR_BUSY_APPEAR = 3.0  # seconds to give the entity to turn ON after the call (state updates travel through the API)

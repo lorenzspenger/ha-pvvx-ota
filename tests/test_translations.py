@@ -62,6 +62,7 @@ def test_no_url_in_a_message():  # hassfest: URLs go through placeholders
 ISSUE_SPECIAL = {  # created outside Store._issue: key -> placeholders the call passes
     "flash_failed": {"name", "error"},
     "pin_pairing_failed": {"name", "address", "flasher_url"},
+    "pairing_package_outdated": {"proxy"},
 }
 
 
@@ -85,7 +86,7 @@ def issue_keys_in_code() -> dict[str, set[str]]:
 
 def test_every_repair_issue_has_a_title_and_text_in_all_languages():
     keys = set(const_issue_keys()) | set(ISSUE_SPECIAL) | set(issue_keys_in_code())
-    assert keys >= {"firmware_unverified", "flash_failed", "pin_pairing_failed"}
+    assert keys >= {"firmware_unverified", "flash_failed", "pin_pairing_failed", "pairing_package_outdated"}
     for path in ("strings.json", "translations/en.json", "translations/de.json"):
         issues = json.loads((PKG / path).read_text())["issues"]
         for key in keys:

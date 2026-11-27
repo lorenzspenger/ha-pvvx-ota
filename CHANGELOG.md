@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **The pairing package has a watchdog and a `pvvx_clear_pin` action:** a pairing run that hangs is stopped after 90 s (result `timeout`) and the pairer is free again; the integration retries once, like *no connection*. `pvvx_clear_pin(mac, pin)` is an experimental rescue for a sensor whose pairing is broken, documented in `docs/pin-sensors.md`.
+- **The pairing package reports a version** (*pvvx package version* diagnostic sensor). An older or missing version logs one warning per proxy and raises the *pairing package out of date* repair issue, which clears when a later pairing finds the current version.
+- **The proxy's pairing entities are found by the name the package gives them**, so renaming them in Home Assistant no longer breaks pairing.
+- **The package install snippet shows both `@main` and a release tag** (`@v<release>`).
 - **The *firmware not verified* repair issue has its text** (English and German).
 - **The PIN pairing steps say "30 to 40 seconds"** instead of "about 25 seconds".
 - **The `flash_latest` action description** says what it does: flash the latest release or the named `version`, with `status_every` and `force`.

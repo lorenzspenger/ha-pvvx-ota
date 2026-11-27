@@ -15,6 +15,7 @@ from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.util import slugify
 
 from .const import (
@@ -26,6 +27,7 @@ from .const import (
     PAIR_BUSY_APPEAR,
     PAIR_BUSY_TIMEOUT,
     PAIR_WAIT,
+    PAIRING_PACKAGE_VERSION,
 )
 from .errors import ha_error
 
@@ -85,6 +87,9 @@ class PairConnectError(HomeAssistantError):
 def _node_entity(hass: HomeAssistant, node: str, domain: str, label_end: str) -> str | None:
     """Entity of the ESPHome node ``node`` (its config entry's device name) whose name ends with ``label_end``.
 
+    Matched on ``original_name`` (the name the package sets), never on ``name``: that one is what the user typed when
+    renaming the entity in Home Assistant.
+
     Found through the node's config entry, not the device registry: the device there carries only the Wi-Fi MAC, while a
     scanner's source is the Bluetooth MAC."""
     wanted = slugify(node)
@@ -93,7 +98,7 @@ def _node_entity(hass: HomeAssistant, node: str, domain: str, label_end: str) ->
         if slugify(str(entry.data.get("device_name") or entry.title)) != wanted:
             continue
         for entity in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
-            label = (entity.name or entity.original_name or "").lower()
+            label = (entity.original_name or "").lower()
             if entity.domain == domain and label.endswith(label_end):
                 return entity.entity_id
     return None
@@ -107,6 +112,51 @@ def busy_entity(hass: HomeAssistant, node: str) -> str | None:
 def result_entity(hass: HomeAssistant, node: str) -> str | None:
     """The "pvvx pair result" text sensor of the proxy node, None if its package has none."""
     return _node_entity(hass, node, "sensor", "pvvx pair result")  # an ESPHome text sensor is a sensor entity
+
+
+def version_entity(hass: HomeAssistant, node: str) -> str | None:
+    """The "pvvx package version" text sensor of the proxy node, None if its package has none (older package)."""
+    return _node_entity(hass, node, "sensor", "pvvx package version")
+
+
+def _outdated_issue_id(node: str) -> str:
+    return f"pairing_package_outdated_{slugify(node)}"
+
+
+def check_package_version(hass: HomeAssistant, node: str) -> None:
+    """Compare the package on the proxy with ``PAIRING_PACKAGE_VERSION``. Pairing runs either way. A missing or lower version
+    raises a repair issue (and one warning, when the issue is new) that the next pairing with a current package clears."""
+    entity_id = version_entity(hass, node)
+    outdated = True
+    if entity_id is not None:
+        state = hass.states.get(entity_id)
+        if state is None or state.state in ("unknown", "unavailable"):
+            return  # the proxy is not reporting right now: no verdict
+        try:
+            outdated = int(state.state) < PAIRING_PACKAGE_VERSION
+        except ValueError:
+            outdated = True
+    issue_id = _outdated_issue_id(node)
+    if not outdated:
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
+        return
+    if ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None:
+        _LOGGER.warning(
+            "The pairing package on %s is older than this integration expects (version %d); pairing still works, but update "
+            "the package in the proxy's YAML (see docs/pin-sensors.md)",
+            node,
+            PAIRING_PACKAGE_VERSION,
+        )
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=False,
+        is_persistent=True,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="pairing_package_outdated",
+        translation_placeholders={"proxy": node},
+    )
 
 
 async def _wait_until_idle(hass: HomeAssistant, entity_id: str) -> None:
@@ -134,6 +184,7 @@ async def async_pair(
     OFF, or a fixed ``wait`` if the package on the proxy is older and has none. If the pairer never reached the sensor ("pvvx
     pair result" says "no connection": the sensor was not connectable) the call is repeated once, then PairConnectError. Returns
     that result ("passkey answered", "no passkey asked", ...) or None if the proxy does not report one."""
+    check_package_version(hass, proxy.name)
     for attempt in range(PAIR_ATTEMPTS):
         _LOGGER.debug("Asking %s to pair with %s", proxy.name, address)
         try:
@@ -150,7 +201,7 @@ async def async_pair(
         await _wait_until_idle(hass, busy)
         result = result_entity(hass, proxy.name)
         state = None if result is None else hass.states.get(result)
-        if state is None or state.state != "no connection":
+        if state is None or state.state not in ("no connection", "timeout"):
             return None if state is None else state.state
         _LOGGER.debug(
             "%s could not reach %s for pairing (attempt %d of %d)", proxy.name, address, attempt + 1, PAIR_ATTEMPTS
