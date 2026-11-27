@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The post-flash version check survives a restart or reload:** a restart, entry reload or integration update within a few minutes after a flash now runs the check afterwards (encryption restored, differing settings flagged, installed version updated; a flash across firmware 5.7/5.8 raises the *encryption key replaced* issue).
+
 ## 0.25.0-beta.7
 
 Git tag `v0.25.0-beta.7`, manifest version `0.25.0b7`.

@@ -34,9 +34,11 @@ from .const import (
     CONF_HW_ID,
     CONF_MIN_BATTERY_V,
     CONF_POLL_INTERVAL,
+    CONF_VERIFY_PENDING,
     CONF_VERSION,
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
+    FIRST_READ_STAGGER,
     MIN_BATTERY_V,
     POLL_CHOICES,
     POST_FLASH_ATTEMPTS,
@@ -44,6 +46,7 @@ from .const import (
     POST_FLASH_QUIET,
     POST_FLASH_RETRY,
     QUEUE_TIMEOUT,
+    VERIFY_PENDING_MAX_AGE,
     WEAK_RSSI,
 )
 from .device import async_connected, describe_link, expected_path
@@ -205,6 +208,7 @@ class PvvxUpdateEntity(UpdateEntity):
         self.async_on_remove(self._stop_device_poll)
         self.async_on_remove(self._stop_verify)
         self._schedule_device_poll()
+        self._resume_verify()
 
     async def _async_first_update(self) -> None:
         """The setup already read the sensor (no entity exists without that), so only the catalog is needed. If it cannot be
@@ -662,6 +666,7 @@ class PvvxUpdateEntity(UpdateEntity):
                         f"V{fmt_version(target.version)}" if local is None else filename,
                         record["link"],
                     )
+                    self._set_verify_marker(expected)  # a restart during or after the transfer resumes the check
                     stats = await flash(
                         client,
                         fw,
@@ -687,11 +692,13 @@ class PvvxUpdateEntity(UpdateEntity):
                     keep_carry = True
                     # the image may have been applied: read the version back like after a normal flash
                     self._quiet_until = asyncio.get_running_loop().time() + POST_FLASH_QUIET
+                    self._set_verify_marker(expected, unverified=True)
                     self._schedule_verify(expected, unverified=True)
                 raise ha_error("flash_failed", name=self._name, error=text) from err
             finally:
                 if not keep_carry:
                     self._store_cfg.clear_carry()
+                    self._clear_verify_marker()  # the old firmware is still on the sensor: nothing to check
                 self._store_cfg.last_flash = record
                 shared.flashing = False
                 self._store_cfg.async_notify()
@@ -700,7 +707,8 @@ class PvvxUpdateEntity(UpdateEntity):
                 self.async_write_ha_state()
         self._store_cfg.flash_succeeded()
         self._quiet_until = asyncio.get_running_loop().time() + POST_FLASH_QUIET
-        self._schedule_verify()
+        self._set_verify_marker(expected)  # the quiet period starts now
+        self._schedule_verify(expected)
 
     async def async_set_encryption(
         self, enable: bool, key: str | None = None, keep_key: bool = False
@@ -730,6 +738,8 @@ class PvvxUpdateEntity(UpdateEntity):
             await self._async_verify_loop(expected, unverified)
         finally:
             self._store_cfg.clear_carry()  # the carried key (if any) never outlives the check
+        # only a finished check (success or the last failed try) clears the marker; a cancel (unload, restart) leaves it
+        self._clear_verify_marker()
 
     async def _async_verify_loop(self, expected: int | None, unverified: bool) -> None:
         for attempt in range(POST_FLASH_ATTEMPTS):
@@ -754,7 +764,39 @@ class PvvxUpdateEntity(UpdateEntity):
         )
         self._store_cfg.flash_unconfirmed()
 
-    def _schedule_verify(self, expected: int | None = None, unverified: bool = False) -> None:
+    @callback
+    def _set_verify_marker(self, expected: int | None, unverified: bool = False) -> None:
+        """Persist that a post-flash check is outstanding (no secrets: the expected version and when it started)."""
+        marker = {"expected": expected, "unverified": unverified, "at": dt_util.utcnow().timestamp()}
+        self.hass.config_entries.async_update_entry(self._entry, data={**self._entry.data, CONF_VERIFY_PENDING: marker})
+
+    @callback
+    def _clear_verify_marker(self) -> None:
+        if CONF_VERIFY_PENDING in self._entry.data:
+            data = {k: v for k, v in self._entry.data.items() if k != CONF_VERIFY_PENDING}
+            self.hass.config_entries.async_update_entry(self._entry, data=data)
+
+    @callback
+    def _resume_verify(self) -> None:
+        """At setup (restart, reload, update of the integration): a check that was outstanding when the entry went away runs
+        now. It waits out what is left of the quiet period, at least FIRST_READ_STAGGER (Bluetooth and the proxies may still be
+        starting). The carried key did not survive, so a flash across the EEPROM boundary ends in the encryption_key_replaced issue."""
+        marker = self._entry.data.get(CONF_VERIFY_PENDING)
+        if not isinstance(marker, dict):
+            return
+        age = dt_util.utcnow().timestamp() - float(marker.get("at") or 0)
+        if age > VERIFY_PENDING_MAX_AGE:
+            _LOGGER.debug("%s: dropping a stale post-flash check marker (%.0f s old)", self._name, age)
+            self._clear_verify_marker()
+            return
+        delay = max(POST_FLASH_DELAY - max(age, 0.0), FIRST_READ_STAGGER)
+        self._quiet_until = asyncio.get_running_loop().time() + delay
+        _LOGGER.info("%s: resuming the post-flash version check in %.0f s", self._name, delay)
+        self._schedule_verify(marker.get("expected"), bool(marker.get("unverified")), delay)
+
+    def _schedule_verify(
+        self, expected: int | None = None, unverified: bool = False, delay: float | None = None
+    ) -> None:
         @callback
         def _start(now: Any) -> None:
             # a plain lambda here ran in an executor thread ("loop is not the running loop") and never started the check
@@ -764,4 +806,4 @@ class PvvxUpdateEntity(UpdateEntity):
 
         if self._cancel_verify is not None:
             self._cancel_verify()  # a newer flash replaces the check that is still waiting
-        self._cancel_verify = async_call_later(self.hass, POST_FLASH_DELAY, _start)
+        self._cancel_verify = async_call_later(self.hass, POST_FLASH_DELAY if delay is None else delay, _start)

@@ -19,6 +19,12 @@ DEFAULT_POLL_INTERVAL = "3d"
 POST_FLASH_QUIET = 30  # seconds after a flash in which no other connection to the sensor is opened (it is rebooting)
 POST_FLASH_DELAY = 30  # seconds the sensor gets to boot (a pvvx sensor takes a few seconds) before the first version check connects to it
 POST_FLASH_RETRY = 30  # seconds between the attempts of that version check
+CONF_VERIFY_PENDING = (
+    "verify_pending"  # entry data while a post-flash version check is outstanding: {expected, unverified, at}
+)
+VERIFY_PENDING_MAX_AGE = (
+    2 * 3600
+)  # seconds after which a verify_pending marker (a restart long after a flash) is ignored and dropped
 POST_FLASH_ATTEMPTS = 8  # attempts before the "flash may not have been applied" issue is raised
 MAX_DOWNLOAD = 0x30000
 FIRST_READ_STAGGER = 4.0  # seconds between the first reads of the entries when HA starts (proxies are shared)
