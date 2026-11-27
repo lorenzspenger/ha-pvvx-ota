@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Diagnostics hide Bluetooth addresses and proxy names:** addresses keep only their last three bytes (`XX:XX:XX:0A:CF:E5`), proxies are called `proxy_1`, `proxy_2`, ... ; PINs and keys stay redacted.
+- **Diagnostics hide Bluetooth addresses and user-chosen names:** addresses keep only their last three bytes (`XX:XX:XX:0A:CF:E5`), proxies are `proxy_N`, devices `device_N`, the entry title `sensor` and entity ids `<domain>.<key>`; PINs and keys stay redacted.
 
 ## 0.26.0-beta.3
 

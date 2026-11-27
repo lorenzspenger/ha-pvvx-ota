@@ -64,6 +64,23 @@ class _Pseudonyms:
         return value
 
 
+_TITLE_SUFFIX = re.compile(r"\((?:[0-9A-Fa-f]{2}:)*[0-9A-Fa-f]{2}\)\s*$")
+
+
+def _title(title: str) -> str:
+    """User-chosen titles can hold a room name: keep only the "(EA:CB:69)" suffix of the default title."""
+    return f"sensor {m.group(0)}" if (m := _TITLE_SUFFIX.search(title)) else "sensor"
+
+
+def _entity_ids(entities: list[er.RegistryEntry], address: str) -> list[str]:
+    """Entity ids hold area and user names: use "<domain>.<translation key>" (or the unique id after the address)."""
+    out = []
+    for n, e in enumerate(sorted(entities, key=lambda e: e.unique_id), 1):
+        key = e.translation_key or e.unique_id.removeprefix(address).lstrip("_")
+        out.append(f"{e.domain}.{key}" if key and key != e.unique_id else f"{e.domain}.entity_{n}")
+    return sorted(out)
+
+
 def _decode(raw: bytes | None, hw_id: int | None) -> dict[str, Any] | None:
     if raw is None:
         return None
@@ -87,15 +104,15 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: PvvxCon
     ent_reg, dev_reg = er.async_get(hass), dr.async_get(hass)
     entities = er.async_entries_for_config_entry(ent_reg, entry.entry_id)
     device_ids = {e.device_id for e in entities if e.device_id}
-    devices = []
-    for device_id in device_ids:
+    devices: list[dict[str, Any]] = []
+    for device_id in sorted(device_ids):
         device = dev_reg.async_get(device_id)
         if device is None:
             continue
         owner = hass.config_entries.async_get_entry(device.config_entry_id)
         devices.append(
             {
-                "name": device.name_by_user or device.name,
+                "name": f"device_{len(devices) + 1}",
                 "model": getattr(device, "model", None),
                 "owned_by": owner.domain if owner else None,  # normally bthome: the entities sit on its device
                 "own_device": device.config_entry_id == entry.entry_id,
@@ -104,7 +121,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: PvvxCon
         )
 
     data = {
-        "entry": {"title": entry.title, "data": dict(entry.data), "options": dict(entry.options)},
+        "entry": {"title": _title(entry.title), "data": dict(entry.data), "options": dict(entry.options)},
         "config_block": _decode(None if store is None else store.raw, None if store is None else store.hw_id),
         "capabilities": sorted(store.capabilities) if store is not None else [],
         "firmware_catalog": shared.source.summary() if shared.source is not None else None,
@@ -114,7 +131,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: PvvxCon
         "flashing_now": shared.flashing,
         "snapshot": None if store is None else store.snapshot,
         "devices": devices,
-        "entities": sorted(e.entity_id for e in entities),
+        "entities": _entity_ids(entities, address),
         "domain": DOMAIN,
     }
     redacted: dict[str, Any] = _Pseudonyms().walk(async_redact_data(data, TO_REDACT))

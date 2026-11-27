@@ -47,7 +47,7 @@ Home Assistant custom integration that updates and configures [pvvx ATC_MiThermo
 * [PIN-protected sensors](docs/pin-sensors.md)
 * [Design notes](docs/design-notes.md), [display layouts](docs/display-layouts.md), [firmware versions](docs/version-layouts.md)
 
-Bug reports: [issues](https://github.com/lorenzspenger/ha-pvvx-ota/issues) (please attach the diagnostics download; it has Bluetooth addresses, proxy names, PINs and keys redacted).
+Bug reports: [issues](https://github.com/lorenzspenger/ha-pvvx-ota/issues) (please attach the diagnostics download; it has Bluetooth addresses, user-chosen names, PINs and keys redacted).
 
 ## License
 

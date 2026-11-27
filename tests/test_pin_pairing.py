@@ -180,7 +180,7 @@ def bonded_entry(hass, pin=SECRET_PIN):
     data = {CONF_ADDRESS: MAC, CONF_VERSION: 0x59, CONF_HW_ID: 10, CONF_PIN_BONDED: True, CONF_BONDED_SCANNER: PROXY}
     if pin is not None:
         data[CONF_PIN] = pin
-    entry = MockConfigEntry(domain=DOMAIN, unique_id=MAC, title="ATC_000001", data=data)
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=MAC, title="ATC Kitchen top (00:00:01)", data=data)
     entry.add_to_hass(hass)
     return entry
 
@@ -221,6 +221,7 @@ async def test_diagnostics_hide_addresses_and_proxy_names_consistently(hass: Hom
     from custom_components.pvvx_ota.shared import get_shared
 
     entry = bonded_entry(hass)
+    hass.config_entries.async_update_entry(entry, title="ATC Kitchen top (00:00:01)")
     other = "11:22:33:44:55:66"
     shared = get_shared(hass)
     shared.links[MAC] = f"kitchen-proxy ({PROXY}), RSSI -60"
@@ -234,16 +235,28 @@ async def test_diagnostics_hide_addresses_and_proxy_names_consistently(hass: Hom
     )
     entry.runtime_data = store
     dev = dr.async_get(hass).async_get_or_create(
-        config_entry_id=entry.entry_id, connections={(dr.CONNECTION_BLUETOOTH, MAC)}, name=f"bedroom ({MAC})"
+        config_entry_id=entry.entry_id,
+        connections={(dr.CONNECTION_BLUETOOTH, MAC)},
+        name=f"bedroom ({MAC})",
     )
+    dr.async_get(hass).async_update_device(dev.id, name_by_user="Kitchen shelf")
     er.async_get(hass).async_get_or_create(
-        "sensor", DOMAIN, "x", config_entry=entry, device_id=dev.id, suggested_object_id="t"
+        "sensor",
+        DOMAIN,
+        "x",
+        config_entry=entry,
+        device_id=dev.id,
+        suggested_object_id="kitchen_top",
+        translation_key="adv_type",
     )
     diag = await async_get_config_entry_diagnostics(hass, entry)
     text = json.dumps(diag, default=str)
     assert not re.search(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", text, re.IGNORECASE)
-    for hidden in ("kitchen-proxy", "bedroom", str(SECRET_PIN), MAC, PROXY):
+    for hidden in ("kitchen", "Kitchen", "shelf", "top", "bedroom", str(SECRET_PIN), MAC, PROXY):
         assert hidden not in text
+    assert diag["entry"]["title"] == "sensor (00:00:01)"
+    assert diag["devices"][0]["name"] == "device_1"
+    assert diag["entities"] == ["sensor.adv_type"]
     assert diag["entry"]["data"][CONF_ADDRESS] == "XX:XX:XX:" + MAC[9:]
     assert diag["entry"]["data"][CONF_BONDED_SCANNER] == "XX:XX:XX:" + PROXY[9:]
     # the same proxy is the same pseudonym everywhere, another proxy another one
