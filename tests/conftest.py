@@ -10,6 +10,23 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 
 @pytest.fixture(autouse=True)
+def clean_serialx_registry():
+    """Drop the URI handler HA's `usb` component registers, after every test.
+
+    `usb` registers `esphome-hass-usb://` in serialx's process-global registry and only removes it from a stop-event
+    callback. If a test's hass ends without that callback running, the next hass fails `usb` setup with "URI scheme is
+    not unique", and with it `bluetooth` and this integration. Removing only the stub's entries keeps serialx's own.
+    """
+    yield
+    try:
+        from serialx.common import _REGISTERED_URI_HANDLERS
+    except ImportError:  # serialx is only there with newer Home Assistant
+        return
+    for entries in _REGISTERED_URI_HANDLERS.values():
+        entries[:] = [e for e in entries if e.handler.unique_scheme != "esphome-hass-usb://"]
+
+
+@pytest.fixture(autouse=True)
 def no_grace(monkeypatch):
     """Don't wait after the end marker in tests."""
     monkeypatch.setattr("custom_components.pvvx_ota.ota.END_MARKER_GRACE", 0)
