@@ -121,7 +121,7 @@ A flash can clear settings. The integration therefore saves them first and, once
 
 ## Diagnostics and languages
 
-* *Download diagnostics* on a sensor's entry gives the entry data/options, the decoded config block (it holds no key), the firmware catalog summary, the timings and result of the last flash, the proxy the last connection really used and which device the entities sit on. Bindkey/PIN-like fields are redacted. The bindkey is never stored; the PIN of a PIN-bonded sensor is stored in its config entry (see [pin-sensors.md](pin-sensors.md)) and redacted here.
+* *Download diagnostics* on a sensor's entry gives the entry data/options, the decoded config block (it holds no key), the firmware catalog summary, the timings and result of the last flash, the proxy the last connection really used and which device the entities sit on. Bindkey/PIN-like fields are redacted, and Bluetooth addresses and proxy names are hidden: an address keeps only its last three bytes (`XX:XX:XX:0A:CF:E5`) and a proxy is called `proxy_1`, `proxy_2`, ... the same way everywhere in one file. The layout of the file can change between versions. The bindkey is never stored; the PIN of a PIN-bonded sensor is stored in its config entry (see [pin-sensors.md](pin-sensors.md)) and redacted here.
 * The user interface is available in English and German (`translations/de.json`). The selectable *values* of the selects (smiley, advertising type) stay English so that automations that use them keep working.
 
 ## Dangerous settings

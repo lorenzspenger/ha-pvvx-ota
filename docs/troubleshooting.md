@@ -4,7 +4,7 @@ Back to the [README](../README.md).
 
 ## Reporting problems
 
-Open an [issue](https://github.com/lorenzspenger/ha-pvvx-ota/issues) and attach the sensor entry's *Download diagnostics* (*Settings → Devices & services → pvvx Thermometer OTA →* the sensor *→ ⋮*) and the log lines containing `pvvx_ota`. Diagnostics redact PINs and keys; look through the log before you paste it anyway.
+Open an [issue](https://github.com/lorenzspenger/ha-pvvx-ota/issues) and attach the sensor entry's *Download diagnostics* (*Settings → Devices & services → pvvx Thermometer OTA →* the sensor *→ ⋮*) and the log lines containing `pvvx_ota`. Diagnostics redact PINs, keys, Bluetooth addresses (all but the last three bytes) and proxy names; look through the log before you paste it anyway.
 
 ## Slow links
 

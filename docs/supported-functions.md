@@ -31,4 +31,4 @@ Minimum battery voltage for a flash, automatic clock sync, switching BTHome encr
 
 ## Repair issues and diagnostics
 
-Failed or unconfirmed flash, a PIN set, pairing lost, encryption not restored or changed, advertising type changed, settings reset or different after a flash. *Download diagnostics* on a sensor's entry shows the decoded configuration block, the firmware list summary and the last flash.
+Failed or unconfirmed flash, a PIN set, pairing lost, encryption not restored or changed, advertising type changed, settings reset or different after a flash. *Download diagnostics* on a sensor's entry (Bluetooth addresses and proxy names redacted) shows the decoded configuration block, the firmware list summary and the last flash.

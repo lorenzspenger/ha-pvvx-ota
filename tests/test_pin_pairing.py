@@ -12,6 +12,7 @@ from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -211,6 +212,57 @@ async def test_diagnostics_redact_the_stored_pin(hass: HomeAssistant, enable_blu
     diag = await async_get_config_entry_diagnostics(hass, entry)
     assert diag["entry"]["data"][CONF_PIN] == "**REDACTED**"
     assert str(SECRET_PIN) not in str(diag)
+
+
+async def test_diagnostics_hide_addresses_and_proxy_names_consistently(hass: HomeAssistant, enable_bluetooth):
+    import json
+    import re
+
+    from custom_components.pvvx_ota.shared import get_shared
+
+    entry = bonded_entry(hass)
+    other = "11:22:33:44:55:66"
+    shared = get_shared(hass)
+    shared.links[MAC] = f"kitchen-proxy ({PROXY}), RSSI -60"
+    store = SimpleNamespace(
+        raw=None,
+        hw_id=None,
+        capabilities=set(),
+        last_clock_read=None,
+        last_flash={"link": f"kitchen-proxy ({PROXY.lower()}), RSSI -61", "other": f"bedroom ({other}), RSSI -70"},
+        snapshot=None,
+    )
+    entry.runtime_data = store
+    dev = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, connections={(dr.CONNECTION_BLUETOOTH, MAC)}, name=f"bedroom ({MAC})"
+    )
+    er.async_get(hass).async_get_or_create(
+        "sensor", DOMAIN, "x", config_entry=entry, device_id=dev.id, suggested_object_id="t"
+    )
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    text = json.dumps(diag, default=str)
+    assert not re.search(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", text, re.IGNORECASE)
+    for hidden in ("kitchen-proxy", "bedroom", str(SECRET_PIN), MAC, PROXY):
+        assert hidden not in text
+    assert diag["entry"]["data"][CONF_ADDRESS] == "XX:XX:XX:" + MAC[9:]
+    assert diag["entry"]["data"][CONF_BONDED_SCANNER] == "XX:XX:XX:" + PROXY[9:]
+    # the same proxy is the same pseudonym everywhere, another proxy another one
+    assert diag["last_connection_via"] == f"proxy_1 (XX:XX:XX:{PROXY[9:]}), RSSI -60"
+    assert diag["last_flash"]["link"] == f"proxy_1 (XX:XX:XX:{PROXY[9:]}), RSSI -61"
+    assert diag["last_flash"]["other"].startswith("proxy_2 (XX:XX:XX:44:55:66)")
+    assert diag["devices"][0]["connections"] == [[dr.CONNECTION_BLUETOOTH, "XX:XX:XX:" + MAC[9:]]]
+
+
+def test_diagnostics_link_forms():
+    from custom_components.pvvx_ota.diagnostics import _Pseudonyms
+
+    p = _Pseudonyms()
+    assert p.link("AA:BB:CC:00:00:01, RSSI unknown") == "proxy_1 (XX:XX:XX:00:00:01), RSSI unknown"
+    assert p.link("hci0, RSSI -5") == "proxy_2, RSSI -5"
+    assert p.link("hci0, RSSI -9") == "proxy_2, RSSI -9"
+    assert p.link("an unknown proxy (no scanner)") == "an unknown proxy (no scanner)"
+    assert p.named("kitchen (AA:BB:CC:00:00:01) x") == "proxy_1 (XX:XX:XX:00:00:01) x"
+    assert p.mac("aa-bb-cc-dd-ee-ff") == "XX:XX:XX:DD:EE:FF"
 
 
 async def test_flow_without_a_pairing_proxy_treats_a_silent_sensor_after_pair_as_no_bond(
