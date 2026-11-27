@@ -500,6 +500,8 @@ class ConfigStore:
             new = event.data.get("new_state")
             if new is None or new.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
                 return
+            if "old_state" in event.data and event.data["old_state"] is None:
+                return  # the entity was just added: a state restored at start or reload, not a reading
             self._clear_issue("encryption_changed")
             self.async_unwatch_bthome()
 

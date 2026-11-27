@@ -38,6 +38,10 @@ async def test_encryption_changed_clears_on_the_next_bthome_reading(hass: HomeAs
         hass.states.async_set(sensor, "unknown")
         await hass.async_block_till_done()
         assert issue(hass, entry, "encryption_changed")
+        hass.states.async_remove(sensor)  # BTHome reloaded: the entity goes and comes back with its restored state
+        hass.states.async_set(sensor, "20.0")
+        await hass.async_block_till_done()
+        assert issue(hass, entry, "encryption_changed")
         hass.states.async_set(sensor, "21.5")
         await hass.async_block_till_done()
         assert issue(hass, entry, "encryption_changed") is None
