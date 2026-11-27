@@ -31,6 +31,7 @@ ISSUE_KEYS = (
     "encryption_changed",
     "encryption_key_replaced",
     "encryption_restore_failed",
+    "firmware_unverified",
     "flash_unconfirmed",
     "pin_bond_lost",
     "pin_set",

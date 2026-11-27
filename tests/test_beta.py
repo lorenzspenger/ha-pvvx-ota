@@ -172,6 +172,7 @@ async def test_switch_on_offers_beta_and_flashes_the_beta_image(hass: HomeAssist
         st = hass.states.get("update.atc_000001")
         assert st.attributes["latest_version"] == "6.0" and st.state == "on"
         assert "Beta firmware V6.0" in st.attributes["release_summary"]
+        assert "newer than this integration knows" in st.attributes["release_summary"]
         await hass.services.async_call(DOMAIN, "flash_latest", {"entity_id": "update.atc_000001"}, blocking=True)
         assert downloads == ["bin/ATC_v60.bin"]
         # switching off returns to stable

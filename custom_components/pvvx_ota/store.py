@@ -40,7 +40,7 @@ from .const import (
 )
 from .device import async_connected
 from .errors import ha_error, validation_error
-from .ota import OtaError, PairingRequiredError, parse_cfg, read_cfg_raw, send_command, write_cfg
+from .ota import OtaError, PairingRequiredError, fmt_version, parse_cfg, read_cfg_raw, send_command, write_cfg
 from .registry import find_bthome_device
 from .shared import get_shared
 
@@ -202,6 +202,7 @@ class ConfigStore:
         """Issues whose cause a read shows to be gone, however it was fixed (here or with another tool)."""
         if not cfgmod.is_verified(raw):
             return
+        self._clear_issue("firmware_unverified")
         if cfgmod.get(raw, "adv_type") == 3:
             self._clear_issue("adv_type_changed")
         if cfgmod.get(raw, "adv_crypto") == 1:
@@ -485,6 +486,17 @@ class ConfigStore:
     async def async_after_flash(self) -> None:
         """Called once the post-flash version check succeeded: bring BTHome encryption back, flag differing settings."""
         snap = self.snapshot
+        raw = self.raw
+        if raw is not None and len(raw) >= cfgmod.MIN_LEN and not cfgmod.is_verified(raw):
+            # a layout nobody compared: no key, flag or setting is touched or checked (the block's bytes are unknown)
+            version = fmt_version(cfgmod.version_of(raw)) or "?"
+            _LOGGER.warning(
+                "%s: the flash ended on firmware V%s, which this integration has not verified", self.name, version
+            )
+            self._issue("firmware_unverified", version=version)
+            self.clear_carry()
+            self._drop_pending()
+            return
         if not snap:
             return
         try:
@@ -584,7 +596,7 @@ class ConfigStore:
         _LOGGER.info("%s: BTHome encryption switched back on (the key stayed on the sensor)", self.name)
 
     # -- dangerous operations (each behind its own guard in the caller) -----
-    def _issue(self, key: str, fixable: bool = False) -> None:
+    def _issue(self, key: str, fixable: bool = False, **placeholders: str) -> None:
         ir.async_create_issue(
             self.hass,
             DOMAIN,
@@ -594,7 +606,7 @@ class ConfigStore:
             is_persistent=True,
             severity=ir.IssueSeverity.WARNING,
             translation_key=key,
-            translation_placeholders={"name": self.name},
+            translation_placeholders={"name": self.name, **placeholders},
         )
 
     def flash_failed(self, err: str) -> None:

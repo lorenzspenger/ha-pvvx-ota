@@ -27,6 +27,7 @@ from homeassistant.helpers.event import async_call_later, async_track_time_inter
 from homeassistant.helpers.service import async_register_platform_entity_service
 from homeassistant.util import dt as dt_util
 
+from .config import VERIFIED_VERSIONS
 from .const import (
     CATALOG_POLL_INTERVAL,
     CATALOG_RETRY,
@@ -359,8 +360,25 @@ class PvvxUpdateEntity(UpdateEntity):
     def _is_current(self, target: Target) -> bool:
         return self._version is not None and self._version >= target.version
 
+    def _unverified_note(self, target: Target) -> str | None:
+        """A line for an offered version whose settings layout this integration has not compared (not for the installed one)."""
+        if target.version in VERIFIED_VERSIONS or self._is_current(target):
+            return None
+        return (
+            f"V{fmt_version(target.version)} is newer than this integration knows: after the flash, encryption and "
+            "settings are not restored or checked and the settings entities are unavailable."
+        )
+
     @property
     def release_summary(self) -> str | None:
+        summary = self._release_summary()
+        target = self._target()
+        note = None if target is None else self._unverified_note(target)
+        if note is None:
+            return summary
+        return note if summary is None else f"{note} {summary}"
+
+    def _release_summary(self) -> str | None:
         target = self._target()
         if target is None:
             return None
@@ -387,11 +405,14 @@ class PvvxUpdateEntity(UpdateEntity):
             return f"**V{fmt_version(self._version)}** (installed, current): {row}\n\nSource: {HISTORY_PAGE}"
         notes = notes_between(self._history, self._version, target.version)
         if notes is None:
-            return (
+            notes = (
                 "No release notes were found in pvvx's README for these versions. "
                 f"See {HISTORY_PAGE} and https://github.com/pvvx/ATC_MiThermometer/commits/master"
             )
-        return notes + f"\n\nSource: {HISTORY_PAGE}"
+        else:
+            notes += f"\n\nSource: {HISTORY_PAGE}"
+        warning = self._unverified_note(target)
+        return notes if warning is None else f"**{warning}**\n\n{notes}"
 
     def version_is_newer(self, latest_version: str, installed_version: str) -> bool:
         latest, installed = parse_version(latest_version), parse_version(installed_version)
@@ -660,6 +681,14 @@ class PvvxUpdateEntity(UpdateEntity):
                     record["link"] = describe_link(self.hass, client, self._address)
                     record["beta"] = bool(local is None and target.is_beta)
                     expected = target.version if local is None else None
+                    flash_version = target.version if local is None else version_of_filename(filename or "")
+                    if flash_version is not None and flash_version not in VERIFIED_VERSIONS:
+                        _LOGGER.info(
+                            "%s: V%s is not a firmware version this integration has verified; encryption and settings "
+                            "will not be restored or checked after the flash",
+                            self._name,
+                            fmt_version(flash_version),
+                        )
                     _LOGGER.info(
                         "%s: flashing %s via %s",
                         self._name,

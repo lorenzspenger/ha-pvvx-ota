@@ -256,3 +256,41 @@ def test_the_boundary_helper():
     assert cfg.crosses_eep_boundary(0x57, 0x58) and cfg.crosses_eep_boundary(0x59, 0x55)
     assert not cfg.crosses_eep_boundary(0x55, 0x57) and not cfg.crosses_eep_boundary(0x58, 0x59)
     assert not cfg.crosses_eep_boundary(None, 0x59) and not cfg.crosses_eep_boundary(0x57, None)
+
+
+async def test_flash_to_an_unverified_version_raises_the_issue_and_touches_nothing(
+    hass: HomeAssistant, enable_bluetooth, fast_batch, caplog
+):
+    caplog.set_level(logging.INFO)
+    from custom_components.pvvx_ota.firmware import Target
+
+    client = sensor(version=0x59, flash_to=0x60)
+    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0, version=0x59)
+    try:
+        with patch("custom_components.pvvx_ota.update.choose_target") as choose:
+            choose.return_value = Target(0x60)
+            entity = await flash_and_verify(hass, entry)
+        assert "has verified" in caplog.text
+        await entity._async_verify_after_flash()
+        found = issue(hass, entry, "firmware_unverified")
+        assert found and not found.is_fixable and found.translation_placeholders["version"] == "6.0"
+        assert client.key_reads == 0 and client.key_writes == 0
+        assert cfg.get(client.cfg, "adv_crypto") == 0  # the flag was not switched back on
+        store = entry.runtime_data
+        assert store._carry_key is None and "pending_key" not in store.snapshot
+        # a read on a verified version clears it (flashed back, or an integration update that verifies it)
+        store.set_raw(bytes([0x55, 0x59]) + client.cfg[2:])
+        assert issue(hass, entry, "firmware_unverified") is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_a_verified_flash_raises_no_unverified_issue(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    client = sensor()
+    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0, version=0x57)
+    try:
+        entity = await flash_and_verify(hass, entry)
+        await entity._async_verify_after_flash()
+        assert issue(hass, entry, "firmware_unverified") is None
+    finally:
+        [c.stop() for c in ctx]
