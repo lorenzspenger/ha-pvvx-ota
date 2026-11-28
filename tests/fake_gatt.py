@@ -13,7 +13,13 @@ from custom_components.pvvx_ota.ota import CFG_CHAR, OTA_CHAR
 class FakeClient:
     @property
     def device_time(self) -> int:
-        return self._clock_base + int(self._clock_now() - self._clock_set_at)
+        return int(self._clock_base + (self._clock_now() - self._clock_set_at) * self.clock_rate)
+
+    @property
+    def clock_rate(self) -> float:
+        """Sensor seconds per real second: the crystal is ``crystal_ppm`` off and the clock counts ``tick_step`` ticks of a
+        16 MHz timer per second."""
+        return 16_000_000 * (1 + self.crystal_ppm * 1e-6) / self.tick_step
 
     @device_time.setter
     def device_time(self, value: int) -> None:
@@ -68,6 +74,12 @@ class FakeClient:
         self._clock_base = 0
         self._clock_set_at = self.time_source()
         self.time_reads = 0
+        self.crystal_ppm = 0.0  # the sensor clock runs this much fast (negative: slow)
+        self.tick_step = 16_000_000  # command 0x24: ticks per clock second (present when last_set is not None)
+        self.step_commands: list[bytes] = []  # every 0x24 request
+        self.step_ignored = False  # a 0x24 write is answered but not kept
+        self.step_stores: int | None = None  # a 0x24 write stores this step instead (a broken firmware)
+        self.step_no_reply = False
         self.restart_on_write = (
             False  # a key or settings write restarts the sensor (the clock falls back to a stale value)
         )
@@ -169,6 +181,20 @@ class FakeClient:
                     self._cb(char, bytearray(reply))
                 if len(data) >= 5 and self.drop_set:
                     self.reboot()
+                return
+            if data[:1] == b"\x24":
+                self.step_commands.append(bytes(data))
+            if (
+                data[:1] == b"\x24" and self.last_set is not None
+            ):  # tick step: get / set (int16 delta), reply 0x24 + uint32
+                if len(data) >= 3 and not self.step_ignored:
+                    self._clock_base = self._clock_base + (self._clock_now() - self._clock_set_at) * self.clock_rate
+                    self._clock_set_at = self._clock_now()
+                    self.tick_step = 16_000_000 + int.from_bytes(data[1:3], "little", signed=True)
+                    if self.step_stores is not None:
+                        self.tick_step = self.step_stores
+                if not self.step_no_reply:
+                    self._cb(char, bytearray(b"\x24" + self.tick_step.to_bytes(4, "little")))
                 return
             if data[:1] == b"\x25":  # sensor coefficients: get (no payload) / set (12 bytes), reply 0x25 + 18 bytes
                 if len(data) > 1:

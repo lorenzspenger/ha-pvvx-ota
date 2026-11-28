@@ -126,6 +126,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: PvvxCon
         "capabilities": sorted(store.capabilities) if store is not None else [],
         "firmware_catalog": shared.source.summary() if shared.source is not None else None,
         "last_clock_read": None if store is None else store.last_clock_read,
+        "clock_drift": None if store is None else store.drift.last,
         "last_flash": None if store is None else store.last_flash,
         "last_connection_via": shared.links.get(address),
         "flashing_now": shared.flashing,

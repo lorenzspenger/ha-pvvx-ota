@@ -27,6 +27,7 @@ from homeassistant.util import dt as dt_util
 from . import calib as calibmod
 from . import clock as clockmod
 from . import config as cfgmod
+from . import drift as driftmod
 from .const import (
     CONF_AUTO_CLOCK_SYNC,
     CONF_AUTO_RESTORE_ENCRYPTION,
@@ -91,6 +92,7 @@ class ConfigStore:
         self.last_clock: dict[str, Any] | None = None  # what the last clock sync did (diagnostics)
         self.last_clock_read: dict[str, Any] | None = None  # the last clock read (diagnostics)
         self._last_clock_set: datetime | None = None  # when this run last set the sensor's clock (memory only)
+        self.drift = driftmod.ClockDrift()  # clock drift calibration (drift.py)
         self.calib: calibmod.Coef | None = None  # sensor coefficients (command 0x25), None if not readable here
         self.last_flash: dict[str, Any] | None = None  # timings/result of the last flash (diagnostics)
         self.quiet_until = 0.0  # event-loop time until which nothing else should connect (sensor is rebooting)
@@ -405,8 +407,10 @@ class ConfigStore:
         return datetime.fromtimestamp(last, UTC).strftime("%H:%M:%S")  # the sensor counts local wall-clock seconds
 
     async def _sync_clock(self, client: Any, force: bool = False) -> bool:
-        """Set the sensor's clock to the local time (what TelinkMiFlasher sends, see clock.py); without ``force`` only when
-        it is more than AUTO_TOLERANCE seconds off. Returns whether a write happened. Raises OtaError/ClockError."""
+        """Set the sensor's clock to the local time (what TelinkMiFlasher sends, see clock.py). Without ``force``: on a board that
+        reports the last-set time only when the sensor was restarted or never set, when it is more than AUTO_SET_THRESHOLD
+        off, or right after the tick step was corrected (the drift measurement needs long windows between sets); on other
+        boards when it is more than AUTO_TOLERANCE off. Returns whether a write happened. Raises OtaError/ClockError."""
         target = clockmod.local_epoch(dt_util.now())
         reading = clockmod.parse(await send_command(client, b"\x23", 0x23, timeout=CLOCK_TIMEOUT))
         before = reading.current
@@ -420,7 +424,12 @@ class ConfigStore:
             "offset_s": diff,
         }
         _LOGGER.debug("%s: clock read: sensor time %s, last set %s, offset %s s", self.name, before, last_text, diff)
-        if not force and abs(diff) <= clockmod.AUTO_TOLERANCE:
+        retuned = self.auto_clock_sync and await self.drift.check(client, reading, target, dt_util.utcnow(), self.name)
+        if reading.last_set is None:
+            due = abs(diff) > clockmod.AUTO_TOLERANCE
+        else:
+            due = retuned or clockmod.never_set(reading) or abs(diff) > clockmod.AUTO_SET_THRESHOLD
+        if not force and not due:
             _LOGGER.debug("%s: clock is %s s off, left alone", self.name, diff)
             return False
         after = clockmod.parse(
