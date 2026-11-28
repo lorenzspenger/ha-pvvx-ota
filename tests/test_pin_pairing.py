@@ -231,6 +231,7 @@ async def test_diagnostics_hide_addresses_and_proxy_names_consistently(hass: Hom
         hw_id=None,
         capabilities=set(),
         last_clock_read=None,
+        drift=SimpleNamespace(last=None),
         last_flash={"link": f"kitchen-proxy ({PROXY.lower()}), RSSI -61", "other": f"bedroom ({other}), RSSI -70"},
         snapshot=None,
     )

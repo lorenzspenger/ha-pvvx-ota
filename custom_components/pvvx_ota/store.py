@@ -27,6 +27,7 @@ from homeassistant.util import dt as dt_util
 from . import calib as calibmod
 from . import clock as clockmod
 from . import config as cfgmod
+from . import drift as driftmod
 from .const import (
     CONF_AUTO_CLOCK_SYNC,
     CONF_AUTO_RESTORE_ENCRYPTION,
@@ -90,6 +91,7 @@ class ConfigStore:
         self.last_clock: dict[str, Any] | None = None  # what the last clock sync did (diagnostics)
         self.last_clock_read: dict[str, Any] | None = None  # the last clock read (diagnostics)
         self._last_clock_set: datetime | None = None  # when this run last set the sensor's clock (memory only)
+        self.drift = driftmod.ClockDrift()  # clock drift calibration (drift.py)
         self.calib: calibmod.Coef | None = None  # sensor coefficients (command 0x25), None if not readable here
         self.last_flash: dict[str, Any] | None = None  # timings/result of the last flash (diagnostics)
         self.quiet_until = 0.0  # event-loop time until which nothing else should connect (sensor is rebooting)
@@ -322,7 +324,8 @@ class ConfigStore:
             "offset_s": diff,
         }
         _LOGGER.debug("%s: clock read: sensor time %s, last set %s, offset %s s", self.name, before, last_text, diff)
-        if not force and abs(diff) <= clockmod.AUTO_TOLERANCE:
+        retuned = self.auto_clock_sync and await self.drift.check(client, reading, dt_util.utcnow(), self.name)
+        if not force and not retuned and abs(diff) <= clockmod.AUTO_TOLERANCE:
             _LOGGER.debug("%s: clock is %s s off, left alone", self.name, diff)
             return False
         after = clockmod.parse(
@@ -331,6 +334,7 @@ class ConfigStore:
         if abs(after - target) > clockmod.AUTO_TOLERANCE:
             raise clockmod.ClockError(f"the sensor reports {after} after being set to {target}")
         self._last_clock_set = dt_util.utcnow()
+        self.drift.note_set(target, self._last_clock_set)
         self.last_clock = {"at": self._last_clock_set.isoformat(), "was_off_s": diff, "forced": force}
         _LOGGER.info(
             "%s: clock set (it was %s s off; sensor last set: %s%s)",

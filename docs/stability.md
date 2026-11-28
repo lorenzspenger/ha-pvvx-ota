@@ -68,7 +68,7 @@ These can change in a minor release.
 
 These can change at any time and need no changelog entry beyond a mention.
 
-* The layout of the diagnostics file.
+* The layout of the diagnostics file, including the clock drift measurement (`clock_drift`: elapsed time, offset, ppm, old and new tick step, result).
 * Log messages.
 * The ids and texts of repair issues, descriptions, errors and all translations.
 * Timing values: timeouts, quiet periods, retry waits, poll intervals that are not an option.
