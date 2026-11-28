@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Automatic clock drift calibration.** On sensors with the time-adjust command, the integration measures how far the clock drifted since it last set it (at least 24 hours, at least 2 s) and corrects the sensor's clock tick step, at most once a day. It follows the option *Set the clock automatically*; the last measurement is in the diagnostics.
+- **Automatic clock drift calibration.** On sensors with the time-adjust command, the integration measures how far the clock drifted since its clock was last set (at least 48 hours, at least 5 s, the same method as TelinkMiFlasher) and corrects the sensor's clock tick step, at most once a day. It follows the option *Set the clock automatically*; the last measurement is in the diagnostics.
 - **A silent probe on a PIN-bonded link no longer starts a new pairing.** The sensor is paired again only after an authentication or encryption error, or after two silent probes in a row.
 - **New repair issue *paired proxy not available* (`pin_proxy_missing`).** It appears after three failed reads in a row because the proxy that holds the bond no longer sees the sensor, points at *Reconfigure*, and clears on the next successful read or a successful reconfigure.
 - **Adding a sensor while a flash or *Update all* runs shows the error "a firmware operation is running" instead of waiting.**
