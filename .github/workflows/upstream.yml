@@ -1,0 +1,53 @@
+name: Upstream
+
+# Early warning, not a gate: the suite against newer Home Assistant than requirements_test.txt pins. Runs weekly and on
+# demand only, never on push or pull_request, so it cannot block normal CI. A red run shows up in the Actions tab; each
+# variant is its own job and fails alone (fail-fast off, continue-on-error only on the experimental ones).
+#
+# * stable: the newest released pytest-homeassistant-custom-component (it pins the Home Assistant it was built for and
+#   can lag a release or two behind Home Assistant itself).
+# * beta:   the newest Home Assistant pre-release. pytest-homeassistant-custom-component has no pre-releases on PyPI, so
+#   its newest release is installed first and `homeassistant` is then upgraded over its pin with --pre. pip reports the
+#   version conflict; that is expected. The step fails if no pre-release was installed (no beta running right now).
+# * dev:    Home Assistant's `dev` branch from GitHub over the same test helper. Heavy and the least stable; allowed to fail.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: pytest (${{ matrix.variant }})
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.variant != 'stable' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [stable, beta, dev]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - name: Install the newest test helper, not the pinned requirements
+        run: |
+          pip install pytest-homeassistant-custom-component
+          # the Bluetooth libraries Home Assistant's bluetooth component needs (requirements_test.txt lists them, unpinned here)
+          pip install bleak-retry-connector bluetooth-adapters bluetooth-auto-recovery bluetooth-data-tools dbus-fast habluetooth aiousbwatcher serialx
+      - name: Home Assistant beta
+        if: matrix.variant == 'beta'
+        run: |
+          pip install --pre --upgrade homeassistant
+          python -c "import re, homeassistant.const as c; assert re.search(r'b\\d', c.__version__), f'no Home Assistant beta available, installed {c.__version__}'"
+      - name: Home Assistant dev branch
+        if: matrix.variant == 'dev'
+        run: pip install --upgrade "homeassistant @ git+https://github.com/home-assistant/core@dev"
+      - name: Versions under test
+        run: |
+          python -c "import homeassistant.const as c; print('homeassistant', c.__version__)"
+          pip list 2>/dev/null | grep -iE "^(homeassistant|pytest-homeassistant-custom-component|habluetooth|bleak|bleak-retry-connector) "
+      - run: pytest -q -p no:cacheprovider
