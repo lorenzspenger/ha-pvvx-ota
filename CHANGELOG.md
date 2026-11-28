@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.26.0
+
+Git tag `v0.26.0`, manifest version `0.26.0`. Same code as 0.26.0-beta.6; contains everything from the 0.25.0 and 0.26.0 betas. Summary since 0.24.0:
+
+- **Breaking: select options are stable ids** (for example `bthome`, `fahrenheit`, `dbm_p3_01`) with translated texts; automations that use the old option text need the id.
+- **Breaking: `pvvx_ota.flash_latest` no longer has the `status_every` field**; the status is read after every 8th block.
+- **Install a specific firmware version, including an older one:** `update.install` and `pvvx_ota.flash_latest` accept `version`; only verified releases with an image for the sensor's board are accepted, downloaded from pinned pvvx commits and checked against a SHA-256 table.
+- **A flash across firmware 5.7/5.8 (either direction) keeps encryption and settings:** the key is carried over in memory and written back with the saved settings; if that is not possible the *flash replaced the encryption key* repair issue says so.
+- **Firmware 5.6 is verified.** Firmware newer than the integration knows (for example the pvvx 6.0 beta) is marked in the release notes, and after such a flash the *firmware not verified* repair issue appears.
+- **Repair issues clear themselves** once the cause is gone, stay after a Home Assistant restart, and *settings were reset to defaults* offers *Restore* in its dialog. *Restore previous settings* also switches encryption back on when the key is still on the sensor.
+- **`pvvx_ota.set_encryption`** raises its repair issue only on a real change and has a `keep_key` option to switch encryption on with the key the sensor still holds.
+- **The post-flash version check survives a restart or reload.**
+- **PIN sensors:** *Reconfigure* pairs a sensor whose PIN was set later; `set_pin` keeps the stored PIN and the proxy pairing in step; `set_pin` is marked experimental. The pairing package has a watchdog, a `pvvx_clear_pin` rescue action and a version sensor; its entities are found by their package names.
+- **Clock:** set in the periodic version read and last after a flash; the log line says when the sensor was last set and whether it restarted.
+- **A failed or unconfirmed flash is logged as a warning.**
+- **Diagnostics hide Bluetooth addresses and user-chosen names.**
+- **Documentation:** `docs/usage.md` rewritten from the code; new pages `docs/stability.md` and `docs/downgrade-research.md`.
+
 ## 0.26.0-beta.6
 
 Git tag `v0.26.0-beta.6`, manifest version `0.26.0b6`.
