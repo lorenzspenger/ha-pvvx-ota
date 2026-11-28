@@ -28,8 +28,9 @@ NOMINAL_STEP = 16_000_000  # ticks per clock second (Telink CLOCK_16M_SYS_TIMER_
 MIN_STEP = NOMINAL_STEP - 32768  # the write takes an int16 delta: about -2048 ppm ...
 MAX_STEP = NOMINAL_STEP + 32767  # ... +2048 ppm
 TICKS_PER_PPM = NOMINAL_STEP // 1_000_000
-DRIFT_MIN_ELAPSED = 24 * 3600.0  # seconds between the set and the read that measures the drift
-DRIFT_MIN_OFFSET = 2.0  # seconds: a smaller offset is within the +-1 s quantization of both clocks
+LAST_SET_MIN = 0x60000000  # a ``last_set`` below this is not a date (TelinkMiFlasher's test)
+DRIFT_MIN_ELAPSED = 48 * 3600.0  # seconds between the set and the read that measures the drift (TelinkMiFlasher: 3 h)
+DRIFT_MIN_OFFSET = 5.0  # seconds: a smaller offset is within the quantization and timing noise of both clocks
 DRIFT_MAX_PPM = 500.0  # a crystal does not drift more: such a measurement is a restart, a manual set or a broken link
 DRIFT_MIN_INTERVAL = 24 * 3600.0  # at most one adjustment attempt per sensor and day
 
@@ -105,15 +106,20 @@ class Drift:
         return None
 
 
-def measure_drift(reading: DeviceTime, set_value: int, elapsed_s: float) -> Drift | None:
-    """Drift of the sensor clock since the integration set it to ``set_value`` ``elapsed_s`` seconds (host time) ago.
+def measure_drift(reading: DeviceTime, host_now: int) -> Drift | None:
+    """Drift of the sensor clock since its last set, the way TelinkMiFlasher does it.
 
-    Only comparable when the sensor still reports that very set (``last_set`` equal; a restart makes it 0, someone else's set
-    changes it) and the baseline is at least DRIFT_MIN_ELAPSED old. The sensor's own seconds between the two are
-    ``current - last_set``, so no wall-clock or daylight saving time enters."""
-    if reading.last_set is None or reading.last_set != set_value or elapsed_s < DRIFT_MIN_ELAPSED:
+    ``last_set`` is the local time the clock was set to (by anyone, at the moment of setting), ``host_now`` the local epoch now
+    (``local_epoch``). ``device_period = current - last_set`` against ``real_period = host_now - last_set``. Not comparable
+    without a real date in ``last_set`` (0 after a restart, absent without TIME_ADJUST) or within DRIFT_MIN_ELAPSED of the
+    set. A daylight saving change in between shifts ``real_period`` by an hour, which the 500 ppm limit rejects."""
+    last = reading.last_set
+    if last is None or last <= LAST_SET_MIN:
         return None
-    return Drift(elapsed_s, (reading.current - reading.last_set) - elapsed_s)
+    real = host_now - last
+    if real < DRIFT_MIN_ELAPSED:
+        return None
+    return Drift(float(real), float((reading.current - last) - real))
 
 
 def corrected_step(old: int, drift: Drift) -> int:

@@ -1,12 +1,11 @@
-"""Automatic clock drift calibration (no Home Assistant imports, state in memory only).
+"""Automatic clock drift calibration (no Home Assistant imports, no state that must survive a restart).
 
-The integration sets the sensor clock itself (``store._sync_clock``) and remembers the value and the host time. A later read that
-still reports that very value as ``last_set`` (no restart, nobody else set it) tells how many seconds the sensor counted while the
-host counted ``elapsed``; the difference over at least 24 h is the drift. The clock does not tick while a connection is open, so
-the seconds a connection stays open after the set (and before the read) are lost on the sensor side; they bias the result towards
-"slow" by at most a few seconds, which the tick step then compensates as well.
-
-After a successful adjustment the baseline is dropped and the caller sets the clock again (a new baseline for the new rate).
+The same method as pvvx's TelinkMiFlasher: the 0x23 reply carries ``last_set``, the local time the clock was set to at the moment
+of setting (by this integration or any other tool), so ``current - last_set`` is what the sensor counted and ``host now -
+last_set`` what really passed. The ratio corrects the tick step. Nothing is remembered between connections, so it works across
+Home Assistant restarts; it cannot work after a sensor restart (``last_set`` is 0). The reading is taken at the start of the
+connection, because the sensor clock stands still while connected. After a change the caller sets the clock again, which is the
+new baseline.
 """
 
 from __future__ import annotations
@@ -26,23 +25,13 @@ TIMEOUT = 5.0
 
 @dataclass
 class ClockDrift:
-    set_value: int | None = None  # the clock value the integration wrote last
-    set_at: datetime | None = None  # host time of that write
     last_try: datetime | None = None  # the last attempt to change the step (at most one per day)
     last: dict[str, Any] | None = None  # the last measurement and what was done with it (diagnostics, not stable)
 
-    def note_set(self, value: int, at: datetime) -> None:
-        self.set_value, self.set_at = value, at
-
-    def forget(self) -> None:
-        self.set_value = self.set_at = None
-
-    async def check(self, client: Any, reading: clockmod.DeviceTime, now: datetime, name: str) -> bool:
+    async def check(self, client: Any, reading: clockmod.DeviceTime, host_now: int, now: datetime, name: str) -> bool:
         """Measure at the start of a connection and adjust the tick step when it is warranted. Returns True when the step
         changed (or may have changed): the baseline is gone and the caller must set the clock again. Never raises."""
-        if self.set_value is None or self.set_at is None or reading.last_set is None:
-            return False
-        drift = clockmod.measure_drift(reading, self.set_value, (now - self.set_at).total_seconds())
+        drift = clockmod.measure_drift(reading, host_now)
         if drift is None:
             return False
         info: dict[str, Any] = {
@@ -87,10 +76,7 @@ class ClockDrift:
         if stored != new:
             info["result"] = "read-back mismatch"
             _LOGGER.warning("%s: the sensor reports tick step %s after writing %s; not retried", name, stored, new)
-            if stored == old:
-                return False
-            self.forget()
-            return True
+            return stored != old  # the rate may have changed: the caller sets the clock again
         info["result"] = "adjusted"
         _LOGGER.info(
             "%s: clock drift %.1f ppm over %.1f h, tick step %s -> %s",
@@ -100,5 +86,4 @@ class ClockDrift:
             old,
             new,
         )
-        self.forget()
         return True

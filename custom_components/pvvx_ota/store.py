@@ -324,7 +324,7 @@ class ConfigStore:
             "offset_s": diff,
         }
         _LOGGER.debug("%s: clock read: sensor time %s, last set %s, offset %s s", self.name, before, last_text, diff)
-        retuned = self.auto_clock_sync and await self.drift.check(client, reading, dt_util.utcnow(), self.name)
+        retuned = self.auto_clock_sync and await self.drift.check(client, reading, target, dt_util.utcnow(), self.name)
         if not force and not retuned and abs(diff) <= clockmod.AUTO_TOLERANCE:
             _LOGGER.debug("%s: clock is %s s off, left alone", self.name, diff)
             return False
@@ -334,7 +334,6 @@ class ConfigStore:
         if abs(after - target) > clockmod.AUTO_TOLERANCE:
             raise clockmod.ClockError(f"the sensor reports {after} after being set to {target}")
         self._last_clock_set = dt_util.utcnow()
-        self.drift.note_set(target, self._last_clock_set)
         self.last_clock = {"at": self._last_clock_set.isoformat(), "was_off_s": diff, "forced": force}
         _LOGGER.info(
             "%s: clock set (it was %s s off; sensor last set: %s%s)",

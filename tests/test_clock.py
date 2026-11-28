@@ -252,63 +252,72 @@ def test_the_fake_clock_stands_still_while_connected():
     assert client.device_time == 514
 
 
-# ---- drift calibration -------------------------------------------------------------------------------------------
+# ---- drift calibration (TelinkMiFlasher's method) -----------------------------------------------------------------
+
+SET0 = 1_790_000_000  # a real local date for last_set
 
 
 def test_drift_arithmetic():
-    reading = clk.DeviceTime(1_000_000 + 86400 + 4, 1_000_000)  # 4 s fast after exactly a day
-    d = clk.measure_drift(reading, 1_000_000, 86400.0)
-    assert d is not None and d.problem is None
-    assert round(d.ppm, 2) == 46.30
-    assert clk.corrected_step(16_000_000, d) == 16_000_741  # +46.3 ppm = 741 ticks (16 per ppm): slower
-    assert clk.build_step_write(16_000_741) == bytes([0x24]) + (741).to_bytes(2, "little", signed=True)
+    day2 = 2 * 86400
+    reading = clk.DeviceTime(SET0 + day2 + 9, SET0)  # the sensor counted 9 s more than really passed
+    d = clk.measure_drift(reading, SET0 + day2)
+    assert d is not None and d.problem is None and d.elapsed_s == day2 and d.offset_s == 9
+    assert round(d.ppm, 2) == 52.08
+    # TelinkMiFlasher: new_step = old_step * device_period / real_period
+    assert clk.corrected_step(16_000_000, d) == round(16_000_000 * (day2 + 9) / day2) == 16_000_833
+    assert clk.corrected_step(16_000_100, d) == round(16_000_100 * (day2 + 9) / day2)
+    assert clk.build_step_write(16_000_833) == bytes([0x24]) + (833).to_bytes(2, "little", signed=True)
     assert clk.build_step_write(15_999_000) == bytes([0x24]) + (-1000).to_bytes(2, "little", signed=True)
-    assert clk.parse_step(bytes([0x24]) + (16_000_741).to_bytes(4, "little")) == 16_000_741
+    assert clk.parse_step(bytes([0x24]) + (16_000_833).to_bytes(4, "little")) == 16_000_833
     for bad in (b"", b"\x24\x00\x00", b"\x23" + bytes(4)):
         with pytest.raises(clk.ClockError):
             clk.parse_step(bad)
     for step in (clk.MIN_STEP - 1, clk.MAX_STEP + 1):
         with pytest.raises(clk.ClockError):
             clk.build_step_write(step)
-    # not comparable: other baseline, no last_set field, too young
-    assert clk.measure_drift(clk.DeviceTime(5, 0), 1_000_000, 86400.0) is None
-    assert clk.measure_drift(clk.DeviceTime(5, None), 1_000_000, 86400.0) is None
-    assert clk.measure_drift(reading, 1_000_000, 86399.0) is None
-    assert (
-        clk.measure_drift(clk.DeviceTime(1_000_000 + 86401, 1_000_000), 1_000_000, 86400.0).problem
-        == "offset too small"
-    )
-    assert (
-        clk.measure_drift(clk.DeviceTime(1_000_000 + 86400 + 100, 1_000_000), 1_000_000, 86400.0).problem
-        == "implausible"
-    )
-    assert clk.corrected_step(clk.MAX_STEP - 5, clk.Drift(86400.0, 40.0)) == clk.MAX_STEP  # clamped
+    # not comparable: restart (0), not a date, no field, younger than 48 h
+    assert clk.measure_drift(clk.DeviceTime(SET0 + day2, 0), SET0 + day2) is None
+    assert clk.measure_drift(clk.DeviceTime(5, 0x5FFFFFFF), SET0 + day2) is None
+    assert clk.measure_drift(clk.DeviceTime(SET0 + day2, None), SET0 + day2) is None
+    assert clk.measure_drift(reading, SET0 + day2 - 1) is None
+    assert clk.measure_drift(clk.DeviceTime(SET0 + day2 + 4, SET0), SET0 + day2).problem == "offset too small"
+    assert clk.measure_drift(clk.DeviceTime(SET0 + day2 + 200, SET0), SET0 + day2).problem == "implausible"
+    assert clk.measure_drift(clk.DeviceTime(SET0 + day2, SET0), SET0 + day2 + 3600).problem == "implausible"  # DST jump
+    assert clk.corrected_step(clk.MAX_STEP - 5, clk.Drift(172800.0, 80.0)) == clk.MAX_STEP  # clamped
 
 
 class Drifting:
     """A sensor whose crystal runs fast, with a host clock the test moves (the fake follows it)."""
 
-    def __init__(self, ppm=50.0, frozen=False, start=None):
+    def __init__(self, ppm=50.0, start=None):
         self.now = [NOW_UTC.timestamp() if start is None else start]
         self.client = FakeClient(cfg=SAMPLE)
         self.client.time_source = lambda: self.now[0]
         self.client.last_set = 0
         self.client.crystal_ppm = ppm
-        self.client.clock_frozen_while_connected = frozen
 
-    async def read(self, hass, freezer, hours):
-        """Move the host ``hours`` on and run a connection that reads the clock (the version read). Only the integration's
-        view of the time moves: shifting Home Assistant's own clock would fire its timers (catalog retries)."""
+    def patches(self):
+        """The integration's view of the time follows the simulated host; Home Assistant's own clock is not shifted (that
+        would fire its timers, e.g. catalog retries)."""
         from homeassistant.util import dt as dt_util
 
+        def moved():
+            return datetime.fromtimestamp(self.now[0], UTC)
+
+        return (
+            patch.object(dt_util, "utcnow", moved),
+            patch.object(dt_util, "now", lambda time_zone=None: moved().astimezone(dt_util.get_default_time_zone())),
+        )
+
+    @property
+    def target(self):
+        return TARGET + int(self.now[0] - NOW_UTC.timestamp())
+
+    async def read(self, hass, hours):
+        """Wait ``hours``, then run a connection that reads the clock (the version read)."""
         self.now[0] += hours * 3600
-        moved = datetime.fromtimestamp(self.now[0], UTC)
         entity = hass.data["entity_components"]["update"].get_entity("update.atc_000001")
-        with (
-            patch.object(dt_util, "utcnow", lambda: moved),
-            patch.object(dt_util, "now", lambda time_zone=None: moved.astimezone(dt_util.get_default_time_zone())),
-        ):
-            await entity._async_read_device()
+        await entity._async_read_device()
 
 
 async def finish(hass, entry, ctx):
@@ -319,17 +328,21 @@ async def finish(hass, entry, ctx):
     [c.stop() for c in ctx]
 
 
-async def drift_setup(hass, freezer, **kw):
+async def drift_setup(hass, freezer, options=None, **kw):
     await berlin(hass, freezer)
     sim = Drifting(**kw)
-    entry, calls, ctx = await setup_cfg_entry(hass, sim.client)
-    return sim, entry, ctx
+    started = list(sim.patches())
+    for p in started:
+        p.start()
+    entry, calls, ctx = await setup_cfg_entry(hass, sim.client, options=options)
+    return sim, entry, (*ctx, *started)
 
 
-async def test_no_adjustment_before_24_hours(hass: HomeAssistant, enable_bluetooth, freezer):
-    sim, entry, ctx = await drift_setup(hass, freezer, ppm=500.0)  # 11 s off after 6 h
+async def test_no_adjustment_before_48_hours(hass: HomeAssistant, enable_bluetooth, freezer):
+    sim, entry, ctx = await drift_setup(hass, freezer, ppm=500.0)  # 11 s off after 6 h: the clock is set, not tuned
     try:
-        await sim.read(hass, freezer, 6)
+        await sim.read(hass, 6)
+        await sim.read(hass, 40)  # 40 h since that set
         assert sim.client.step_commands == [] and sim.client.tick_step == 16_000_000
         assert entry.runtime_data.drift.last is None
     finally:
@@ -340,52 +353,66 @@ async def test_a_measured_drift_adjusts_the_tick_step(hass: HomeAssistant, enabl
     caplog.set_level("INFO", logger="custom_components.pvvx_ota")
     sim, entry, ctx = await drift_setup(hass, freezer, ppm=50.0)  # +50 ppm: 4.3 s fast per day
     try:
-        await sim.read(hass, freezer, 25)  # the sensor is 4.5 s ahead: within the tolerance, so only the step changes
+        await sim.read(hass, 49)  # 8.8 s ahead
         # 16 ticks per ppm: 50 ppm = 800 ticks (the integer second readings may be a second off)
         assert 700 <= sim.client.tick_step - 16_000_000 <= 900
         assert [c[0] for c in sim.client.step_commands] == [0x24, 0x24, 0x24]  # read, write, read-back
-        assert "clock drift 4" in caplog.text and "ppm over 25.0 h, tick step 16000000 -> 160" in caplog.text
+        assert "ppm over 49.0 h, tick step 16000000 -> 160" in caplog.text
         last = entry.runtime_data.drift.last
-        assert (
-            last["result"] == "adjusted" and last["old_step"] == 16_000_000 and last["new_step"] == sim.client.tick_step
-        )
-        assert last["elapsed_s"] == 25 * 3600
-        assert sim.client.time_writes[-1] == clk.build_set(TARGET + 25 * 3600)  # re-baselined for the new rate
-        # a day later the clock keeps time
-        await sim.read(hass, freezer, 25)
-        assert abs(sim.client.device_time - (TARGET + 50 * 3600)) <= 1 or sim.client.time_writes
-        assert entry.runtime_data.drift.last["result"] in ("offset too small", "adjusted")
+        assert last["result"] == "adjusted" and last["old_step"] == 16_000_000 and last["elapsed_s"] == 49 * 3600
+        assert last["new_step"] == sim.client.tick_step
+        assert sim.client.time_writes[-1] == clk.build_set(sim.target)  # a fresh baseline for the new rate
         data = (await get_diagnostics(hass, entry))["clock_drift"]
-        assert data["result"] == entry.runtime_data.drift.last["result"]
+        assert data["result"] == "adjusted"
     finally:
         await finish(hass, entry, ctx)
 
 
-async def test_the_second_day_is_exact(hass: HomeAssistant, enable_bluetooth, freezer):
+async def test_the_second_round_is_exact(hass: HomeAssistant, enable_bluetooth, freezer):
     sim, entry, ctx = await drift_setup(hass, freezer, ppm=50.0)
     try:
-        await sim.read(hass, freezer, 24)
+        await sim.read(hass, 48)
         step = sim.client.tick_step
         assert step != 16_000_000
         n = len(sim.client.time_writes)
-        await sim.read(hass, freezer, 24)  # corrected: 0 or 1 s off, nothing to do
+        await sim.read(hass, 48)  # corrected: 0 or 1 s off, nothing to do
         assert sim.client.tick_step == step and len(sim.client.time_writes) == n
         assert entry.runtime_data.drift.last["result"] == "offset too small"
     finally:
         await finish(hass, entry, ctx)
 
 
-async def test_no_adjustment_after_a_restart_or_a_foreign_set(hass: HomeAssistant, enable_bluetooth, freezer):
+async def test_it_survives_a_home_assistant_restart(hass: HomeAssistant, enable_bluetooth, freezer):
     sim, entry, ctx = await drift_setup(hass, freezer, ppm=50.0)
     try:
-        sim.client.reboot(stale=sim.client.device_time - 1000)  # restart: last_set 0, clock stale
-        await sim.read(hass, freezer, 30)
-        assert sim.client.step_commands == []
+        assert await hass.config_entries.async_reload(entry.entry_id)  # a new store: nothing in memory
+        await hass.async_block_till_done()
         assert entry.runtime_data.drift.last is None
-        # the integration set it again at that read; now somebody else sets the clock
-        sim.client.last_set = sim.client.last_set + 7  # a mismatching "last set"
-        await sim.read(hass, freezer, 30)
-        assert sim.client.step_commands == []
+        await sim.read(hass, 49)
+        assert entry.runtime_data.drift.last["result"] == "adjusted"
+    finally:
+        await finish(hass, entry, ctx)
+
+
+async def test_a_set_by_another_tool_is_a_valid_baseline(hass: HomeAssistant, enable_bluetooth, freezer):
+    sim, entry, ctx = await drift_setup(hass, freezer, ppm=50.0)
+    try:
+        sim.now[0] += 3600
+        sim.client.device_time = sim.target  # someone else sets the right local time ...
+        sim.client.last_set = sim.target  # ... and the sensor remembers when
+        await sim.read(hass, 50)
+        assert entry.runtime_data.drift.last["result"] == "adjusted"
+        assert entry.runtime_data.drift.last["elapsed_s"] == 50 * 3600
+    finally:
+        await finish(hass, entry, ctx)
+
+
+async def test_no_adjustment_after_a_sensor_restart(hass: HomeAssistant, enable_bluetooth, freezer):
+    sim, entry, ctx = await drift_setup(hass, freezer, ppm=50.0)
+    try:
+        sim.client.reboot(stale=sim.client.device_time - 1000)  # last_set 0, clock stale
+        await sim.read(hass, 50)
+        assert sim.client.step_commands == [] and entry.runtime_data.drift.last is None
     finally:
         await finish(hass, entry, ctx)
 
@@ -393,7 +420,7 @@ async def test_no_adjustment_after_a_restart_or_a_foreign_set(hass: HomeAssistan
 async def test_an_implausible_drift_is_ignored(hass: HomeAssistant, enable_bluetooth, freezer):
     sim, entry, ctx = await drift_setup(hass, freezer, ppm=2000.0)
     try:
-        await sim.read(hass, freezer, 30)
+        await sim.read(hass, 50)
         assert sim.client.step_commands == [] and entry.runtime_data.drift.last["result"] == "implausible"
     finally:
         await finish(hass, entry, ctx)
@@ -403,7 +430,7 @@ async def test_the_step_is_clamped_to_the_command_range(hass: HomeAssistant, ena
     sim, entry, ctx = await drift_setup(hass, freezer, ppm=2117.0)
     try:
         sim.client.tick_step = clk.MAX_STEP - 500  # near the end of the range; net +100 ppm, which needs 1600 ticks
-        await sim.read(hass, freezer, 30)
+        await sim.read(hass, 50)
         assert sim.client.tick_step == clk.MAX_STEP
         assert sim.client.step_commands[1] == clk.build_step_write(clk.MAX_STEP)
     finally:
@@ -414,33 +441,31 @@ async def test_a_sensor_without_the_command_is_not_asked(hass: HomeAssistant, en
     sim, entry, ctx = await drift_setup(hass, freezer, ppm=50.0)
     try:
         sim.client.last_set = None  # 4 byte clock replies: no TIME_ADJUST in this build
-        await sim.read(hass, freezer, 30)
+        await sim.read(hass, 50)
         assert sim.client.step_commands == [] and entry.runtime_data.drift.last is None
     finally:
         await finish(hass, entry, ctx)
 
 
 async def test_the_option_switches_the_calibration_off(hass: HomeAssistant, enable_bluetooth, freezer):
-    await berlin(hass, freezer)
-    sim = Drifting(ppm=50.0)
-    entry, calls, ctx = await setup_cfg_entry(hass, sim.client, options={CONF_AUTO_CLOCK_SYNC: False})
+    sim, entry, ctx = await drift_setup(hass, freezer, options={CONF_AUTO_CLOCK_SYNC: False}, ppm=50.0)
     try:
-        await sim.read(hass, freezer, 30)
+        await sim.read(hass, 50)
         assert sim.client.step_commands == []
     finally:
         await finish(hass, entry, ctx)
 
 
 async def test_a_read_back_mismatch_is_logged_and_not_retried(hass: HomeAssistant, enable_bluetooth, freezer, caplog):
-    sim, entry, ctx = await drift_setup(hass, freezer, ppm=50.0)
+    sim, entry, ctx = await drift_setup(hass, freezer, ppm=32.0)  # 5.6 s after 49 h: measured, not set
     try:
         sim.client.step_ignored = True  # answered, not kept
-        await sim.read(hass, freezer, 25)
+        await sim.read(hass, 49)
         assert sim.client.tick_step == 16_000_000
         assert "not retried" in caplog.text and entry.runtime_data.drift.last["result"] == "read-back mismatch"
         assert [c for c in caplog.records if c.levelno >= 30 and "tick step" in c.getMessage()]
         n = len(sim.client.step_commands)
-        await sim.read(hass, freezer, 1)  # same day: no second attempt
+        await sim.read(hass, 1)  # same day: no second attempt
         assert len(sim.client.step_commands) == n and entry.runtime_data.drift.last["result"] == "rate limited"
     finally:
         await finish(hass, entry, ctx)
@@ -449,15 +474,18 @@ async def test_a_read_back_mismatch_is_logged_and_not_retried(hass: HomeAssistan
 async def test_no_answer_to_the_step_command_is_not_fatal(hass: HomeAssistant, enable_bluetooth):
     # real time: the reply timeout must really elapse
     sim = Drifting(ppm=50.0, start=time.time())
+    started = list(sim.patches())
+    for p in started:
+        p.start()
     entry, calls, ctx = await setup_cfg_entry(hass, sim.client)
     try:
         sim.client.step_no_reply = True
         with patch("custom_components.pvvx_ota.drift.TIMEOUT", 0.05):
-            await sim.read(hass, None, 25)
+            await sim.read(hass, 49)
         assert entry.runtime_data.drift.last["result"].startswith("failed")
         assert hass.states.get(ent(hass, "number", "adv_interval")).state == "1.0"
     finally:
-        await finish(hass, entry, ctx)
+        await finish(hass, entry, (*ctx, *started))
 
 
 async def test_a_step_outside_the_range_is_left_alone(hass: HomeAssistant, enable_bluetooth, freezer):
@@ -465,7 +493,7 @@ async def test_a_step_outside_the_range_is_left_alone(hass: HomeAssistant, enabl
     try:
         sim.client.tick_step = 24_000_000  # not a 16 MHz timer
         sim.client.crystal_ppm = 500_075.0  # a 24 MHz timer 50 ppm fast, so the drift itself is plausible
-        await sim.read(hass, freezer, 25)
+        await sim.read(hass, 49)
         assert len(sim.client.step_commands) == 1 and entry.runtime_data.drift.last["result"] == "unexpected step"
     finally:
         await finish(hass, entry, ctx)
@@ -475,21 +503,21 @@ async def test_a_step_already_at_the_limit_is_not_written(hass: HomeAssistant, e
     sim, entry, ctx = await drift_setup(hass, freezer, ppm=2147.0)
     try:
         sim.client.tick_step = clk.MAX_STEP  # the clock still runs 100 ppm fast, nothing left to correct with
-        await sim.read(hass, freezer, 30)
+        await sim.read(hass, 50)
         assert [len(c) for c in sim.client.step_commands] == [1]  # the read only
         assert entry.runtime_data.drift.last["result"] == "no change"
     finally:
         await finish(hass, entry, ctx)
 
 
-async def test_a_step_stored_as_something_else_starts_a_new_baseline(
+async def test_a_step_stored_as_something_else_sets_the_clock_again(
     hass: HomeAssistant, enable_bluetooth, freezer, caplog
 ):
     sim, entry, ctx = await drift_setup(hass, freezer, ppm=50.0)
     try:
         sim.client.step_stores = 16_000_123
-        await sim.read(hass, freezer, 25)
+        await sim.read(hass, 49)
         assert "not retried" in caplog.text and entry.runtime_data.drift.last["result"] == "read-back mismatch"
-        assert sim.client.time_writes[-1] == clk.build_set(TARGET + 25 * 3600)  # the rate changed: set the clock again
+        assert sim.client.time_writes[-1] == clk.build_set(sim.target)  # the rate changed: set the clock again
     finally:
         await finish(hass, entry, ctx)
