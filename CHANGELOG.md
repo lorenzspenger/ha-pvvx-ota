@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **`flash_file` refuses a file above 128 KiB before reading it** with a translated error, instead of loading the whole file first.
+- **The battery check only uses a voltage reported within the last 6 hours,** prefers the BTHome voltage sensor if the device has several, and ignores unavailable or unknown values. Without a recent voltage it logs a warning with the age of the last report and flashes anyway; a battery percentage is not converted to volts.
 - **Timeouts, lost links, too-slow links and "not a pvvx sensor" now show a fully translated error message** (English and German) instead of a translated prefix with the English reason.
 - **The slow-link abort text now fits sensors without a PIN too.** It says to move a proxy closer to the sensor, and for a PIN sensor to pair it through a closer proxy with *Reconfigure*.
 - **A silent probe on a PIN-bonded link no longer starts a new pairing.** The sensor is paired again only after an authentication or encryption error, or after two silent probes in a row.

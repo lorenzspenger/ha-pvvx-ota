@@ -115,7 +115,7 @@ If `firmware.json` offers a version above 5.9, the release summary and the relea
 
 ### Battery check
 
-Before a flash the integration reads the battery voltage from the voltage sensor of the sensor's BTHome device (no extra Bluetooth traffic) and refuses below the limit (default 2.5 V, an option) with a clear message. With no voltage known it logs a warning and flashes anyway. `flash_latest` and `flash_file` accept `force: true` to flash anyway; *Install* and *Reflash firmware* have no override, lower the limit in the options instead.
+Before a flash the integration reads the battery voltage from the voltage sensor of the sensor's BTHome device (no extra Bluetooth traffic) and refuses below the limit (default 2.5 V, an option) with a clear message. Only a voltage reported within the last 6 hours counts, the BTHome sensor is preferred if the device has several voltage sensors, and unavailable or unknown values are ignored. A battery percentage is not converted to volts. With no recent voltage known it logs a warning (with the age of the last report) and flashes anyway. `flash_latest` and `flash_file` accept `force: true` to flash anyway; *Install* and *Reflash firmware* have no override, lower the limit in the options instead.
 
 ### Link quality
 
@@ -127,7 +127,7 @@ Firmware operations (*Install*, *Reflash firmware*, `flash_latest`, `flash_file`
 
 ### A local file
 
-`pvvx_ota.flash_file` flashes a local `.bin`. The path must be allowed by `allowlist_external_dirs`, and the file must be named `<board>_v<NN>.bin` for the sensor's board (for example `MHO_C401_v59.bin`; `MHO_C401N_*` is refused for an `MHO_C401`). The board is derived from the firmware list (live or stored copy); without a list the action refuses. With `skip_board_check: true` only that check is skipped (no list is needed, so it also works offline): signature, size and header checks, the battery check, the slow-link stop and everything else still apply, and a WARNING is logged. A wrong image can stop a sensor from working. *Install*, *Reflash firmware* and *Update all* never skip the check.
+`pvvx_ota.flash_file` flashes a local `.bin`. The path must be allowed by `allowlist_external_dirs`, and the file must be at most 128 KiB (0x20000 bytes, checked before it is read) and named `<board>_v<NN>.bin` for the sensor's board (for example `MHO_C401_v59.bin`; `MHO_C401N_*` is refused for an `MHO_C401`). The board is derived from the firmware list (live or stored copy); without a list the action refuses. With `skip_board_check: true` only that check is skipped (no list is needed, so it also works offline): signature, size and header checks, the battery check, the slow-link stop and everything else still apply, and a WARNING is logged. A wrong image can stop a sensor from working. *Install*, *Reflash firmware* and *Update all* never skip the check.
 
 ## After a flash
 

@@ -16,7 +16,7 @@ from homeassistant.components.update import (
     UpdateEntity,
     UpdateEntityFeature,
 )
-from homeassistant.const import CONF_ADDRESS
+from homeassistant.const import CONF_ADDRESS, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, SupportsResponse, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
@@ -29,6 +29,7 @@ from homeassistant.util import dt as dt_util
 
 from .config import VERIFIED_VERSIONS
 from .const import (
+    BATTERY_MAX_AGE,
     CATALOG_POLL_INTERVAL,
     CATALOG_RETRY,
     CONF_BETA,
@@ -67,6 +68,7 @@ from .firmware import (
 )
 from .flash_session import FlashSession
 from .ota import (
+    MAX_BLE_OTA,
     FirmwareError,
     OtaError,
     OtaUnverified,
@@ -198,6 +200,7 @@ class PvvxUpdateEntity(UpdateEntity):
         )
         self._catalog: Catalog | None = None
         self._catalog_error: str | None = None
+        self._battery_note = ""  # why the last battery voltage lookup found nothing (for the log)
         self._queued_task: asyncio.Task[None] | None = None  # set while this entity waits in the firmware queue
         self._cancel_device_poll: Callable[[], None] | None = None
         self._poll_seconds_set: int | None = -1  # the interval the timer runs with (-1: none scheduled yet)
@@ -584,30 +587,56 @@ class PvvxUpdateEntity(UpdateEntity):
         if not self.hass.config.is_allowed_path(path):
             raise validation_error("path_not_allowed", path=path)
         try:
+            size = (await self.hass.async_add_executor_job(Path(path).stat)).st_size
+            if size > MAX_BLE_OTA:  # before reading: a huge file must not be loaded into memory
+                raise validation_error("file_too_big", path=path, size=size, limit=MAX_BLE_OTA)
             data = await self.hass.async_add_executor_job(Path(path).read_bytes)
         except OSError as err:
             raise validation_error("file_unreadable", path=path, error=err) from err
         await self._async_flash(data, Path(path).name, force=force, skip_board_check=skip_board_check)
 
     def _battery_voltage(self) -> float | None:
-        """Battery voltage from the linked BTHome device's voltage sensor (no extra Bluetooth traffic), None if unknown."""
+        """Battery voltage from the linked BTHome device's voltage sensor (no extra Bluetooth traffic), None if unknown.
+
+        Only a state reported within ``BATTERY_MAX_AGE`` counts, the BTHome platform's sensor wins over others, and
+        unavailable or unknown states are ignored. What was found is left in ``_battery_note`` for the log."""
+        self._battery_note = "no BTHome voltage sensor"
         device_id = self.registry_entry.device_id if self.registry_entry else None
         if device_id is None:
             return None
+        now = dt_util.utcnow()
+        fresh: list[tuple[bool, float]] = []  # (is the BTHome platform, volts)
+        stale_age: timedelta | None = None
+        percent = False
         for ent in er.async_entries_for_device(er.async_get(self.hass), device_id):
             state = self.hass.states.get(ent.entity_id)
             if state is None or ent.platform == DOMAIN:
                 continue
-            if (ent.device_class or ent.original_device_class) == "voltage" or state.attributes.get(
-                "device_class"
-            ) == "voltage":
-                try:
-                    volts = float(state.state)
-                except ValueError:
-                    continue
-                if state.attributes.get("unit_of_measurement") == "mV":
-                    volts /= 1000
-                return volts
+            device_class = ent.device_class or ent.original_device_class or state.attributes.get("device_class")
+            if device_class == "battery" and state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+                percent = True
+            if device_class != "voltage":
+                continue
+            try:
+                volts = float(state.state)
+            except ValueError:
+                continue  # unavailable, unknown
+            age = now - state.last_reported
+            if age > BATTERY_MAX_AGE:
+                stale_age = age if stale_age is None else min(stale_age, age)
+                continue
+            if state.attributes.get("unit_of_measurement") == "mV":
+                volts /= 1000
+            fresh.append((ent.platform == "bthome", volts))
+        if fresh:
+            return ([v for is_bthome, v in fresh if is_bthome] or [v for _, v in fresh])[0]
+        if stale_age is not None:
+            hours = BATTERY_MAX_AGE.total_seconds() / 3600
+            self._battery_note = (
+                f"last voltage report {stale_age.total_seconds() / 3600:.1f} h ago, older than {hours:.0f} h"
+            )
+        elif percent:
+            self._battery_note = "only a battery percentage is available, not converted to volts"
         return None
 
     def _check_battery(self, force: bool) -> None:
@@ -615,7 +644,7 @@ class PvvxUpdateEntity(UpdateEntity):
         volts = self._battery_voltage()
         limit = float(self._entry.options.get(CONF_MIN_BATTERY_V, MIN_BATTERY_V))
         if volts is None:
-            _LOGGER.warning("%s: battery voltage unknown (no BTHome voltage sensor); flashing anyway", self._name)
+            _LOGGER.warning("%s: battery voltage unknown (%s); flashing anyway", self._name, self._battery_note)
         elif volts < limit:
             if not force:
                 raise validation_error("battery_low", name=self._name, volts=f"{volts:.2f}", limit=f"{limit:.2f}")

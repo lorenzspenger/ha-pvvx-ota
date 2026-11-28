@@ -177,6 +177,9 @@
     "file_unreadable": {
       "message": "Cannot read {path}: {error}"
     },
+    "file_too_big": {
+      "message": "The file {path} is {size} bytes, more than the {limit} bytes a BLE OTA image can have. Use the web flasher for bigger images."
+    },
     "battery_low": {
       "message": "{name}: the battery is at {volts} V, below the limit of {limit} V. Replace the battery first, or call the action again with force: true."
     },
