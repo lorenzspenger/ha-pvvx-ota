@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 
+from custom_components.pvvx_ota import flash_session
 from custom_components.pvvx_ota import store as store_mod
 from custom_components.pvvx_ota import update as upd
 from custom_components.pvvx_ota.firmware import Catalog, FirmwareError, FirmwareSource
@@ -77,11 +78,11 @@ async def test_poll_reports_catalog_and_connection_problems(setup, caplog):
         await entity.async_update()
     assert "no list" in caplog.text
     # right after a flash the poll does not connect
-    entity._quiet_until = asyncio.get_running_loop().time() + 1000
+    entity._store_cfg.open_session().start_quiet(1000)
     with patch.object(upd.PvvxUpdateEntity, "_async_read_device") as read:
         await entity.async_update()
     read.assert_not_called()
-    entity._quiet_until = 0
+    entity._store_cfg.end_session()
     with patch.object(upd.PvvxUpdateEntity, "_async_read_device", side_effect=HomeAssistantError("out of range")):
         await entity.async_update()
     assert entity._catalog_error == "out of range"
@@ -127,7 +128,7 @@ async def test_a_device_that_is_not_pvvx_is_not_flashed(setup):
     with (
         patch.object(upd, "read_cfg_raw", return_value=b"\x00" * 12),
         patch.object(entity, "_check_battery"),
-        patch("custom_components.pvvx_ota.update.async_call_later"),
+        patch("custom_components.pvvx_ota.flash_session.async_call_later"),
         pytest.raises((HomeAssistantError, FirmwareError), match="not flashing"),
     ):
         await entity.async_flash_latest()
@@ -136,7 +137,9 @@ async def test_a_device_that_is_not_pvvx_is_not_flashed(setup):
 async def test_post_flash_verification_gives_up_after_eight_tries(setup, caplog):
     hass, entry, entity = setup
     captured = []
-    with patch.object(upd, "async_call_later", lambda hass_, delay, cb: captured.append(cb) or (lambda: None)):
+    with patch.object(
+        flash_session, "async_call_later", lambda hass_, delay, cb: captured.append(cb) or (lambda: None)
+    ):
         entity._schedule_verify()
     caplog.set_level(logging.DEBUG)
 
@@ -411,9 +414,9 @@ async def test_a_newer_flash_replaces_the_waiting_version_check_and_removal_canc
 
         return cancel
 
-    with patch.object(upd, "async_call_later", fake_call_later):
+    with patch.object(flash_session, "async_call_later", fake_call_later):
         entity._schedule_verify()
         entity._schedule_verify()  # the second flash supersedes the first check
         assert cancelled == [True, False]
-        entity._stop_verify()  # unloading drops the one that is left
+        entity._store_cfg.session.detach()  # unloading drops the one that is left
     assert cancelled == [True, True]

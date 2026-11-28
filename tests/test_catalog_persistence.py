@@ -190,7 +190,11 @@ async def test_without_a_catalog_the_skip_flag_flashes_but_every_other_check_sti
     client, tmp = sensor
     caplog.set_level(logging.WARNING)
     odd = write(tmp, "whatever_name.bin")  # the name says nothing about the board
-    with no_catalog(), patch_connection(client), patch("custom_components.pvvx_ota.update.POST_FLASH_DELAY", 3600):
+    with (
+        no_catalog(),
+        patch_connection(client),
+        patch("custom_components.pvvx_ota.flash_session.POST_FLASH_DELAY", 3600),
+    ):
         await flash_file(hass, odd, skip_board_check=True)
     assert client.writes and client.writes[-1][:2] == b"\x02\xff"  # flashed to the end marker
     assert "WITHOUT checking" in caplog.text and "whatever_name.bin" in caplog.text and "ATC_000001" in caplog.text
@@ -224,6 +228,6 @@ async def test_a_wrong_board_prefix_is_flashed_with_the_skip_flag_and_a_warning(
         with pytest.raises(Exception, match="board"):  # without the flag: refused, as always
             await flash_file(hass, wrong)
         assert client.writes == []
-        with patch("custom_components.pvvx_ota.update.POST_FLASH_DELAY", 3600):
+        with patch("custom_components.pvvx_ota.flash_session.POST_FLASH_DELAY", 3600):
             await flash_file(hass, wrong, skip_board_check=True)
     assert client.writes and "WITHOUT checking" in caplog.text and "MHO_C401_v59.bin" in caplog.text

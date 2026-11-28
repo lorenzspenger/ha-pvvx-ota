@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
@@ -59,7 +60,7 @@ async def test_first_read_waits_for_its_delay_and_a_failed_clock_set_is_reported
 async def test_refresh_and_write_refuse_while_a_flash_runs(setup):
     hass, client, entry, store = setup
     shared = get_shared(hass)
-    shared.flashing = True
+    shared.set_flashing(hass, entry.data[CONF_ADDRESS])
     try:
         with raises_key("flash_running"):
             await store.async_refresh()
@@ -70,7 +71,7 @@ async def test_refresh_and_write_refuse_while_a_flash_runs(setup):
                 pass
         assert not store.can_restore
     finally:
-        shared.flashing = False
+        shared.set_flashing(hass, None)
 
 
 # -- restore and the encryption flag -------------------------------------------------------------------

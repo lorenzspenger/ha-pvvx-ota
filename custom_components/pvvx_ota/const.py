@@ -25,6 +25,7 @@ CONF_VERIFY_PENDING = (
 VERIFY_PENDING_MAX_AGE = (
     2 * 3600
 )  # seconds after which a verify_pending marker (a restart long after a flash) is ignored and dropped
+STOP_FLASH_WAIT = 10.0  # seconds an unload waits for a cancelled transfer to let go of the connection and the lock
 POST_FLASH_ATTEMPTS = 8  # attempts before the "flash may not have been applied" issue is raised
 MAX_DOWNLOAD = 0x30000
 FIRST_READ_STAGGER = 4.0  # seconds between the first reads of the entries when HA starts (proxies are shared)

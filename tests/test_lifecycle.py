@@ -24,7 +24,7 @@ async def flash(hass):
 
 
 async def failing_flash(hass):
-    with patch("custom_components.pvvx_ota.update.async_call_later"), pytest.raises(HomeAssistantError):
+    with patch("custom_components.pvvx_ota.flash_session.async_call_later"), pytest.raises(HomeAssistantError):
         await flash(hass)
 
 
@@ -69,7 +69,7 @@ async def test_next_successful_flash_clears_the_issue(hass: HomeAssistant, enabl
         await failing_flash(hass)
         assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE)
         client.fail_status_at = None
-        with patch("custom_components.pvvx_ota.update.async_call_later"):
+        with patch("custom_components.pvvx_ota.flash_session.async_call_later"):
             await flash(hass)
         assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE) is None
     finally:
@@ -354,7 +354,7 @@ def capture_verify():
         started.append(cb)
         return lambda: None
 
-    return started, patch("custom_components.pvvx_ota.update.async_call_later", fake)
+    return started, patch("custom_components.pvvx_ota.flash_session.async_call_later", fake)
 
 
 async def test_a_stall_after_the_end_marker_is_a_failed_unverified_flash_not_a_success(

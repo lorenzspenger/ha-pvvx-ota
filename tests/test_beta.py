@@ -138,7 +138,7 @@ async def setup_beta_entry(hass, catalog, options=None, hw=0):
         patch.object(FirmwareSource, "async_download", download),
         patch("custom_components.pvvx_ota.update.async_connected", fake),
         patch("custom_components.pvvx_ota.store.async_connected", fake),
-        patch("custom_components.pvvx_ota.update.async_call_later"),
+        patch("custom_components.pvvx_ota.flash_session.async_call_later"),
     )
     for c in ctx:
         c.start()
