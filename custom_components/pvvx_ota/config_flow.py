@@ -90,6 +90,16 @@ def _schema(fields: dict[Any, Any]) -> Any:
     return vol.Schema(fields)
 
 
+class FirmwareBusyError(Exception):
+    """The global firmware lock is held (a flash or Update all runs): the flow answers at once instead of waiting for it."""
+
+
+def require_free_lock(hass: HomeAssistant) -> None:
+    """Raise FirmwareBusyError if the firmware lock is held. The caller takes the lock right after, with no await between."""
+    if get_shared(hass).lock.locked():
+        raise FirmwareBusyError
+
+
 @dataclass
 class PairOutcome:
     """Result of pairing a PIN sensor through its proxy."""
@@ -154,6 +164,7 @@ class PvvxOtaConfigFlow(ConfigFlow, domain=DOMAIN):
         source: str | None = None
         try:
             try:
+                require_free_lock(self.hass)
                 async with get_shared(self.hass).lock, async_connected(self.hass, address, name) as client:
                     source = connected_source(client)
                     ver, hw = await read_cfg(client)
@@ -170,6 +181,7 @@ class PvvxOtaConfigFlow(ConfigFlow, domain=DOMAIN):
                 # no pairing proxy: the sensor may have a bond from a hand-written ble_client in the proxy that served this
                 # connection: encrypt with it and read again through that proxy only
                 try:
+                    require_free_lock(self.hass)
                     async with (
                         get_shared(self.hass).lock,
                         async_connected(self.hass, address, name, encrypt=True, bonded_scanner=source) as client,
@@ -181,6 +193,9 @@ class PvvxOtaConfigFlow(ConfigFlow, domain=DOMAIN):
                     raise PairingRequiredError("no bond: the sensor stayed silent after pair()") from silent
                 bonded_source = source
                 _LOGGER.info("%s has a PIN and a bond in %s: added as a PIN-bonded sensor", address, source)
+        except FirmwareBusyError:
+            errors["base"] = "firmware_busy"
+            return None
         except NotPvvxError:
             return self.async_abort(reason="not_pvvx")
         except PairingRequiredError as err:
@@ -263,12 +278,16 @@ class PvvxOtaConfigFlow(ConfigFlow, domain=DOMAIN):
         proxy = proxies[0]
         pair_result: str | None = None
         try:
+            require_free_lock(self.hass)
             async with get_shared(self.hass).lock:
                 pair_result = await async_pair(self.hass, proxy, address, pin)
                 async with async_connected(
                     self.hass, address, name, encrypt=True, bonded_scanner=proxy.source
                 ) as client:
                     ver, hw = await read_cfg(client)
+        except FirmwareBusyError:
+            outcome.error = "firmware_busy"
+            return outcome
         except PairingRequiredError:
             # the proxy paired (or tried to) but the sensor still refuses. If the sensor never asked for the PIN it paired
             # Just Works and handed out a key it then refuses; otherwise the pairing finished and the key is still refused
@@ -397,7 +416,7 @@ class PvvxOtaConfigFlow(ConfigFlow, domain=DOMAIN):
             return self._failed_form(step_id, address, entry.title, outcome)
         ver, hw, source = outcome.ok
         self._pairing_ok(address)
-        for key in ("pin_set", "pin_bond_lost"):
+        for key in ("pin_set", "pin_bond_lost", "pin_proxy_missing"):
             ir.async_delete_issue(self.hass, DOMAIN, f"{key}_{entry.entry_id}")
         return self.async_update_reload_and_abort(
             entry,

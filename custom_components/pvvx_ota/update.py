@@ -50,7 +50,7 @@ from .const import (
     VERIFY_PENDING_MAX_AGE,
     WEAK_RSSI,
 )
-from .device import async_connected, describe_link, expected_path
+from .device import SilentLinkError, async_connected, describe_link, expected_path
 from .errors import ha_error, validation_error
 from .firmware import (
     HISTORY_PAGE,
@@ -191,6 +191,9 @@ class PvvxUpdateEntity(UpdateEntity):
         self._store_cfg = entry.runtime_data
         self._hw_id: int | None = entry.data.get(CONF_HW_ID)
         self._version: int | None = entry.data.get(CONF_VERSION)
+        self._unconfirmed: tuple[int, bool] | None = (
+            None  # (expected version, must match exactly) of an unconfirmed flash
+        )
         self._catalog: Catalog | None = None
         self._catalog_error: str | None = None
         self._queued_task: asyncio.Task[None] | None = None  # set while this entity waits in the firmware queue
@@ -499,8 +502,21 @@ class PvvxUpdateEntity(UpdateEntity):
 
     def _clear_flash_issues(self, ver: int) -> None:
         """The failed/unconfirmed-flash issues go once a read shows a new version that is the latest one."""
+        if self._unconfirmed is not None and self._unconfirmed[1]:
+            return  # an unconfirmed flash to an older version: only reading exactly that version settles it
         target = self._target()
         if target is not None and ver >= target.version:
+            self._store_cfg.flash_succeeded()
+
+    def _check_unconfirmed(self, ver: int) -> None:
+        """A successful read while a flash is unconfirmed: the issue clears when the version is at or above the expected one,
+        changed or not (a reflash of the installed version never changes it). A flash to an older version than the one that
+        was installed counts as done only when the read version equals it."""
+        if self._unconfirmed is None:
+            return
+        expected, exact = self._unconfirmed
+        if (ver == expected) if exact else (ver >= expected):
+            self._unconfirmed = None
             self._store_cfg.flash_succeeded()
 
     def _store(self, ver: int | None, hw: int | None) -> None:
@@ -510,6 +526,7 @@ class PvvxUpdateEntity(UpdateEntity):
         self._version, self._hw_id = ver, hw
         if changed:
             self._clear_flash_issues(ver)
+        self._check_unconfirmed(ver)
         self.hass.config_entries.async_update_entry(
             self._entry, data={**self._entry.data, CONF_VERSION: ver, CONF_HW_ID: hw}
         )
@@ -831,12 +848,13 @@ class PvvxUpdateEntity(UpdateEntity):
                 await self._async_read_device()
                 self.async_write_ha_state()
                 self._store_cfg.flash_unconfirmed_cleared()
+                self._unconfirmed = None
                 if unverified and expected is not None and self._version == expected:
                     self._store_cfg.flash_succeeded()
                 await self._store_cfg.async_after_flash()  # encryption flag back on, differing settings flagged
                 return
             except HomeAssistantError as err:
-                if isinstance(err.__cause__, PairingRequiredError):
+                if isinstance(err.__cause__, PairingRequiredError) and not isinstance(err.__cause__, SilentLinkError):
                     return  # logged, reported and (if possible) re-paired by the read: retrying would not help
                 _LOGGER.debug(
                     "%s: post-flash version check %s/%s failed: %s", self._name, attempt + 1, POST_FLASH_ATTEMPTS, err
@@ -847,6 +865,8 @@ class PvvxUpdateEntity(UpdateEntity):
             self._name,
         )
         self._store_cfg.flash_unconfirmed()
+        if expected is not None:
+            self._unconfirmed = (expected, self._version is not None and expected < self._version)
 
     @callback
     def _set_verify_marker(self, expected: int | None, unverified: bool = False) -> None:

@@ -410,7 +410,7 @@ async def test_reconfigure_pairs_a_sensor_that_got_its_pin_after_it_was_added(
 ):
     caplog.set_level(logging.DEBUG)
     entry = pin_entry(hass, bonded=False)
-    issue_ids = [f"pin_set_{entry.entry_id}", f"pin_bond_lost_{entry.entry_id}"]
+    issue_ids = [f"pin_set_{entry.entry_id}", f"pin_bond_lost_{entry.entry_id}", f"pin_proxy_missing_{entry.entry_id}"]
     for issue_id in issue_ids:
         ir.async_create_issue(
             hass, DOMAIN, issue_id, is_fixable=False, severity=ir.IssueSeverity.WARNING, translation_key=issue_id[:-33]

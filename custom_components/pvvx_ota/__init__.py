@@ -34,6 +34,7 @@ ISSUE_KEYS = (
     "firmware_unverified",
     "flash_unconfirmed",
     "pin_bond_lost",
+    "pin_proxy_missing",
     "pin_set",
     "reset_defaults",
     "settings_differ_after_flash",

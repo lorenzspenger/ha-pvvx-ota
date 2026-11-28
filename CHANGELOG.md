@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **A silent probe on a PIN-bonded link no longer starts a new pairing.** The sensor is paired again only after an authentication or encryption error, or after two silent probes in a row.
+- **New repair issue *paired proxy not available* (`pin_proxy_missing`).** It appears after three failed reads in a row because the proxy that holds the bond no longer sees the sensor, points at *Reconfigure*, and clears on the next successful read or a successful reconfigure.
+- **Adding a sensor while a flash or *Update all* runs shows the error "a firmware operation is running" instead of waiting.**
+- **The *flash may not have been applied* issue clears on any successful read at or above the expected version,** also when the version did not change. A flash to an older version clears it only when that exact version is read.
+
 ## 0.26.0-beta.6
 
 Git tag `v0.26.0-beta.6`, manifest version `0.26.0b6`.

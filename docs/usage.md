@@ -194,7 +194,7 @@ Each issue belongs to one sensor and survives a restart.
 | Issue | Appears when | Clears when |
 |---|---|---|
 | Firmware update failed (`flash_failed`) | A flash ended with an error; the old firmware keeps running | After the next successful flash, or when a version read shows the latest firmware |
-| Flash may not have been applied (`flash_unconfirmed`) | The image was sent but the new version could not be read in 8 attempts | The sensor answers with the new version |
+| Flash may not have been applied (`flash_unconfirmed`) | The image was sent but the new version could not be read in 8 attempts | A later read shows the expected version or a newer one, whether or not the version changed (a flash to an older version needs exactly that version) |
 | Firmware not verified (`firmware_unverified`) | A flash ended on a version above 5.9 or otherwise not verified | A read shows a verified version |
 | The flash replaced the encryption key (`encryption_key_replaced`) | A flash across 5.7/5.8 could not carry the key over | `set_encryption` with `enable` has switched encryption on (with your old key, or a new one that you enter in the BTHome entry); `keep_key` is refused meanwhile |
 | Encryption was not switched back on (`encryption_restore_failed`) | The flag could not be set again after a flash or a restore | A read shows encryption on, however it was switched on |
@@ -204,6 +204,7 @@ Each issue belongs to one sensor and survives a restart.
 | Settings were reset to defaults (`reset_defaults`) | *Reset settings to defaults* changed the sensor | *Submit* in the issue (or the restore button) brings the saved settings back, or a read shows them |
 | A PIN was set (`pin_set`) | The sensor refuses the link on an entry without a bond | *Reconfigure* pairs it, or the sensor can be read without a PIN again |
 | Pairing lost (`pin_bond_lost`) | A bonded sensor refuses even after pairing again with the stored PIN, or the pairing after `set_pin` failed | The next successful read. Fix it with *Reconfigure* (enter the PIN again) or the pair button of a hand-made proxy setup |
+| Paired proxy not available (`pin_proxy_missing`) | Three reads in a row failed because the proxy that holds the bond no longer sees the sensor (removed, renamed, replaced or offline) | The next successful read, or a successful *Reconfigure*, which pairs through another proxy |
 
 While a sensor is being added, a failed pairing leaves a *could not be paired with its PIN* notice (`pin_pairing_failed`) that disappears once the sensor has been added. Deleting an entry removes all its issues. Fix steps for the PIN issues: [pin-sensors.md](pin-sensors.md) and [troubleshooting.md](troubleshooting.md).
 

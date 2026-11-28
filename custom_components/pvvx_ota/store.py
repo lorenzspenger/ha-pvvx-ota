@@ -40,7 +40,7 @@ from .const import (
     DOMAIN,
     FIRST_READ_RETRY,
 )
-from .device import async_connected
+from .device import SilentLinkError, async_connected
 from .errors import ha_error, validation_error
 from .ota import OtaError, PairingRequiredError, fmt_version, parse_cfg, read_cfg_raw, send_command, write_cfg
 from .pairing import async_forget_bond, async_repair
@@ -48,6 +48,7 @@ from .registry import find_bthome_device
 from .shared import get_shared
 
 _LOGGER = logging.getLogger(__name__)
+PROXY_MISSING_READS = 3  # failed reads in a row before "paired proxy gone" becomes a repair issue
 REBOOT_REPLY_TIMEOUT = 5.0
 REBOOT_QUIET = 30.0  # s without other connections after the reboot command
 REBOOT_WATCH = 30.0  # s to look for the first advertisement afterwards (log only)
@@ -79,6 +80,7 @@ class ConfigStore:
         self._listeners: list[Callable[[], None]] = []
         self._pending: dict[str, int] = {}
         self._flush: asyncio.Task[None] | None = None
+        self._proxy_missing_reads = 0  # failed reads in a row because the paired proxy does not see the sensor
         self._unreachable = False  # a read failed and none worked since: logged once, and once more when it is back
         self._writing = False  # the running flush has taken its batch and is on the wire: new changes need the next one
         self._clock_last = False  # the next batch is the last connection of the post-flash work: it sets the clock
@@ -174,6 +176,8 @@ class ConfigStore:
             self._unreachable = False
             _LOGGER.info("%s is reachable again", self.name)
         self._clear_issue("pin_bond_lost")
+        self._proxy_missing_reads = 0
+        self._clear_issue("pin_proxy_missing")
         if not self.entry.data.get(CONF_PIN_BONDED):
             self._clear_issue("pin_set")  # the read worked without a PIN: it was removed elsewhere
         self._clear_fixed_issues(raw)
@@ -380,29 +384,53 @@ class ConfigStore:
                 await self.async_initial_read()
                 return
             except PairingRequiredError as err:
-                # a PIN will not go away by itself: no retry loop of Bluetooth connections
-                self.pairing_lost(err)
-                return
+                if not isinstance(err, SilentLinkError):
+                    # a PIN will not go away by itself: no retry loop of Bluetooth connections
+                    self.pairing_lost(err)
+                    return
+                _LOGGER.debug("%s: first read failed: %s", self.name, err)
+                if wait is None:
+                    self.mark_unreachable(err)
+                    return
+                self._count_proxy_missing(err)
+                await asyncio.sleep(wait)
             except (OtaError, HomeAssistantError) as err:
                 _LOGGER.debug("%s: first read failed: %s", self.name, err)
                 if wait is None:
                     self.mark_unreachable(err)
                     return
+                self._count_proxy_missing(err)
                 await asyncio.sleep(wait)
 
     def mark_unreachable(self, err: BaseException, logged: bool = False) -> None:
         """A read failed. Home Assistant's rule for unavailability: log it once (INFO), not on every failed attempt, and log
         again when the sensor is back (set_raw). ``logged``: the caller has already logged the reason."""
+        self._count_proxy_missing(err)
         if self._unreachable:
             return
         self._unreachable = True
         if not logged:
             _LOGGER.info("%s is unavailable: %s", self.name, err)
 
+    def _count_proxy_missing(self, err: BaseException) -> None:
+        """A PIN sensor whose paired proxy does not see it: after PROXY_MISSING_READS failed reads in a row a repair issue
+        points at Reconfigure (which pairs through another proxy). Any other outcome of a read restarts the count."""
+        if getattr(err, "translation_key", None) != "paired_proxy_does_not_see_sensor":
+            self._proxy_missing_reads = 0
+            return
+        self._proxy_missing_reads += 1
+        if self._proxy_missing_reads >= PROXY_MISSING_READS:
+            placeholders = getattr(err, "translation_placeholders", None) or {}
+            self._issue("pin_proxy_missing", proxy=str(placeholders.get("proxy", "")))
+
     def pairing_lost(self, err: Exception) -> None:
         """A read was refused for want of pairing. A bonded sensor was already paired again with its stored PIN by the
         connection helper if that was possible. Never an unhandled exception: a log line, a repair issue or a reauth flow,
         and the entities stay unavailable until a read works."""
+        if isinstance(err, SilentLinkError):  # one silent probe: the bond was not touched, nothing to repair yet
+            _LOGGER.info("%s: %s", self.name, err)
+            self.mark_unreachable(err, logged=True)
+            return
         _LOGGER.warning("%s: %s", self.name, err)
         self.mark_unreachable(err, logged=True)
         if not self.entry.data.get(CONF_PIN_BONDED):

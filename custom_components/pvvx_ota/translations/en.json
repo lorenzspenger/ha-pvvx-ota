@@ -44,6 +44,7 @@
       "no_pairing_proxy": "No proxy that hears this sensor offers the pairing action. Add the pairing package to a proxy (see docs/pin-sensors.md in the integration repository) and try again."
     },
     "error": {
+      "firmware_busy": "A firmware operation (a flash or Update all) is running on another sensor. Try again when it is done.",
       "cannot_connect": "Could not connect to the sensor (the connection did not complete within about 25 seconds). pvvx sensors are connectable only part of the time; a weak signal or a busy proxy also causes this. Wait a minute and try again. If it keeps failing and the sensor has a PIN, remove the PIN and add it again.",
       "unexpected": "Unexpected error: {error}. See the Home Assistant log (pvvx_ota) for the traceback.",
       "pin_wrong": "The proxy paired with the PIN, but {name} still refuses the connection. This is a problem on the sensor, usually an old pairing entry or old firmware. Fix it once with TelinkMiFlasher ({flasher_url}) near the sensor: 1) connect and update the firmware to the latest version, 2) set the PIN to 0 and save, then set your PIN again (this clears the sensor's pairing memory), 3) add the sensor here again.",
@@ -252,6 +253,10 @@
     "pin_bond_lost": {
       "title": "{name}: pairing lost, pair again from the proxy",
       "description": "This sensor has a PIN and was added with a bond stored in one ESPHome proxy, but it now refuses the link even after encryption. The proxy probably lost the bond (flash erase, NVS wipe) or the PIN was changed. Choose Reconfigure on the entry and enter the PIN to pair again, or press the pair button on the proxy (see docs/pin-sensors.md in the integration repository); this issue clears after the next successful read."
+    },
+    "pin_proxy_missing": {
+      "title": "{name}: paired proxy not available, pair through another one",
+      "description": "{name} is paired through the proxy {proxy}, but that proxy no longer sees the sensor (it was removed, renamed or replaced, or it is offline), so the sensor cannot be read. Open the entry's three-dot menu, choose Reconfigure and enter the PIN: the sensor is then paired through another proxy that offers the pairing action (docs/pin-sensors.md in the integration repository). It clears after the next successful read."
     },
     "pin_set": {
       "title": "{name}: a PIN was set",

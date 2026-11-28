@@ -36,6 +36,7 @@ DISCONNECT_TIMEOUT = (
     8.0  # a proxy that never confirms the disconnect must not hold things up (or the link open) silently
 )
 _LOGGER = logging.getLogger(__name__)
+SILENT_PROBES_BEFORE_REPAIR = 2  # silent probes in a row on a bonded link before it is paired again
 CONNECT_TIMEOUT = 25.0  # seconds for the whole connect (all retries, all proxies); the flow must not hang for minutes
 
 
@@ -198,13 +199,18 @@ async def _open(
     return client
 
 
+class SilentLinkError(PairingRequiredError):
+    """A bonded link did not answer the probe, without any authentication or encryption error. One such probe proves
+    nothing (a weak link or a busy sensor does it too), so it does not start a new pairing."""
+
+
 async def _verify_link(client: Any, name: str) -> None:
     """A bonded link must answer the config command (a cheap read) before anything else is sent over it: a bond the sensor
-    no longer knows gives a refusal (error 5/15) or a link that never replies."""
+    no longer knows gives a refusal (error 5/15, PairingRequiredError) or a link that never replies (SilentLinkError)."""
     try:
         await read_cfg_raw(client, PROBE_TIMEOUT)
     except NotPvvxError as silent:
-        raise PairingRequiredError(f"{name}: no reply on the encrypted link (the bond is not accepted)") from silent
+        raise SilentLinkError(f"{name}: no reply on the encrypted link (the bond is not accepted)") from silent
 
 
 @asynccontextmanager
@@ -221,9 +227,10 @@ async def async_connected(
     For a PIN sensor with a bond (``encrypt``; looked up from the entry unless given) the connection must run through the
     proxy that holds the bond (``bonded_scanner``): another one is refused anyway and must not send anything to the
     sensor, so the link is dropped with a clear error. Then the link is encrypted and checked with a config read before
-    the caller gets it. If the check fails (the proxy or the sensor lost the bond) the sensor is paired again through
-    that proxy with the PIN stored in its entry, once; without a PIN or when that does not help PairingRequiredError is
-    raised. Sensors without a bond: nothing changes."""
+    the caller gets it. If the sensor refuses the link (authentication or encryption error) or stays silent twice in a
+    row (the proxy or the sensor lost the bond) it is paired again through that proxy with the PIN stored in its entry,
+    once; without a PIN or when that does not help PairingRequiredError is raised. A single silent probe raises
+    SilentLinkError and changes nothing. Sensors without a bond: nothing changes."""
     pin: int | None = None
     from_entry = encrypt is None  # an operation on a configured sensor, not the config flow's own verification
     if encrypt is None:
@@ -236,6 +243,15 @@ async def async_connected(
             await _verify_link(client, name)
         except (PairingRequiredError, OtaError) as first:
             await disconnect_quietly(client, name)
+            silent_probes = get_shared(hass).silent_probes
+            if isinstance(first, SilentLinkError):
+                silent_probes[address] = silent_probes.get(address, 0) + 1
+                repair_now = silent_probes[address] >= SILENT_PROBES_BEFORE_REPAIR
+            else:
+                repair_now = isinstance(first, PairingRequiredError)  # an explicit refusal (ATT error 5/15)
+            if not repair_now:
+                raise first  # nothing proves the bond is gone: keep it, the next read tries again
+            silent_probes.pop(address, None)
             if not (pin and bonded_scanner and await async_repair(hass, address, bonded_scanner, pin)):
                 if from_entry and not pin and (entry := entry_for(hass, address)) is not None:
                     # a dead bond and no PIN to pair again with: ask for it (Home Assistant starts at most one reauth
@@ -255,6 +271,8 @@ async def async_connected(
         except BaseException:
             await disconnect_quietly(client, name)
             raise
+        else:
+            get_shared(hass).silent_probes.pop(address, None)
     try:
         yield client
     finally:

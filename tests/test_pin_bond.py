@@ -25,10 +25,11 @@ from custom_components.pvvx_ota.const import (
     DOMAIN,
 )
 from custom_components.pvvx_ota.ota import PairingRequiredError
+from custom_components.pvvx_ota.shared import get_shared
 
 from .fake_gatt import FakeClient
 from .test_config import MAC, SAMPLE, patch_catalog
-from .test_ha import FLOW_CONN, svc
+from .test_ha import FLOW_CONN, flow_conn, svc
 from .translated import raises_key
 
 PROXY = "AA:BB:CC:00:00:01"
@@ -352,17 +353,63 @@ async def test_a_working_bond_is_verified_and_not_repaired(hass, connects, probe
     assert len(connects.calls) == 1
 
 
-@pytest.mark.parametrize("first", ["refused", "silent"])
+@pytest.mark.parametrize("first", ["refused", "silent_twice"])
 async def test_a_dead_bond_is_repaired_with_the_stored_pin_and_retried(hass, connects, probe, monkeypatch, first):
     stored(hass, 424242)
     repair = AsyncMock(return_value=True)
     monkeypatch.setattr(dev, "async_repair", repair)
+    if first == "silent_twice":
+        connects.append(silent())
+        with pytest.raises(dev.SilentLinkError):  # the first silent probe changes nothing
+            async with dev.async_connected(hass, MAC, "ATC"):
+                pytest.fail("must not get a client")
+        repair.assert_not_awaited()
     connects.append(Linked(needs_pairing=True, pair_helps=False) if first == "refused" else silent())
     connects.append(Linked())  # after pairing again the link answers
     async with dev.async_connected(hass, MAC, "ATC") as client:
         assert client is not None
     repair.assert_awaited_once_with(hass, MAC, PROXY, 424242)
-    assert len(connects.calls) == 2
+    assert len(connects.calls) == (3 if first == "silent_twice" else 2)
+    assert MAC not in get_shared(hass).silent_probes
+
+
+async def test_one_silent_probe_keeps_the_bond_and_does_not_pair_again(hass, connects, probe, monkeypatch):
+    stored(hass, 424242)
+    repair = AsyncMock(return_value=True)
+    monkeypatch.setattr(dev, "async_repair", repair)
+    first = silent()
+    connects.append(first)
+    with pytest.raises(dev.SilentLinkError):
+        async with dev.async_connected(hass, MAC, "ATC"):
+            pytest.fail("must not get a client")
+    repair.assert_not_awaited()
+    assert first.disconnected and len(connects.calls) == 1
+    assert get_shared(hass).silent_probes == {MAC: 1}
+
+
+async def test_a_working_probe_resets_the_silent_count(hass, connects, probe, monkeypatch):
+    stored(hass, 424242)
+    repair = AsyncMock(return_value=True)
+    monkeypatch.setattr(dev, "async_repair", repair)
+    for client in (silent(), Linked(), silent()):
+        connects.append(client)
+        try:
+            async with dev.async_connected(hass, MAC, "ATC"):
+                pass
+        except dev.SilentLinkError:
+            pass
+    repair.assert_not_awaited()  # never two silent probes in a row
+    assert get_shared(hass).silent_probes == {MAC: 1}
+
+
+async def test_an_authentication_error_pairs_again_at_once(hass, connects, probe, monkeypatch):
+    stored(hass, 424242)
+    repair = AsyncMock(return_value=True)
+    monkeypatch.setattr(dev, "async_repair", repair)
+    connects.extend([Linked(needs_pairing=True, pair_helps=False), Linked()])
+    async with dev.async_connected(hass, MAC, "ATC"):
+        pass
+    repair.assert_awaited_once_with(hass, MAC, PROXY, 424242)
 
 
 async def test_a_dead_bond_without_a_stored_pin_raises_without_repairing(hass, connects, probe, monkeypatch):
@@ -382,6 +429,7 @@ async def test_repair_that_cannot_run_or_does_not_help_raises(hass, connects, pr
     stored(hass, 424242)
     for helps in (False, True):
         monkeypatch.setattr(dev, "async_repair", AsyncMock(return_value=helps))
+        get_shared(hass).silent_probes[MAC] = 1  # the second silent probe in a row
         connects[:] = [silent()] + ([silent()] if helps else [])
         with pytest.raises(PairingRequiredError):
             async with dev.async_connected(hass, MAC, "ATC"):
@@ -449,3 +497,115 @@ async def test_unpinned_connection_still_works_for_a_sensor_without_a_bond(hass,
     connects.append(client)
     async with dev.async_connected(hass, MAC, "ATC") as c:
         assert c is client
+
+
+# -- S5: the paired proxy is gone ----------------------------------------------------------------------------
+
+
+def proxy_gone():
+    return dev.ha_error("paired_proxy_does_not_see_sensor", name="ATC", proxy=PROXY)
+
+
+async def test_three_failed_reads_because_the_proxy_is_gone_raise_a_repair_issue(hass, enable_bluetooth):
+    from .test_pin_pairing import issue, pin_store
+
+    entry, _client, ctx = await pin_store(hass, bonded=True)
+    try:
+        store = entry.runtime_data
+
+        @asynccontextmanager
+        async def gone(*a, **k):
+            raise proxy_gone()
+            yield
+
+        with patch("custom_components.pvvx_ota.store.async_connected", gone):
+            for _ in range(2):
+                with pytest.raises(HomeAssistantError):
+                    await store.async_refresh()
+            assert issue(hass, entry, "pin_proxy_missing") is None
+            with pytest.raises(HomeAssistantError):
+                await store.async_refresh()
+        found = issue(hass, entry, "pin_proxy_missing")
+        assert found and found.translation_placeholders["proxy"] == PROXY and found.translation_placeholders["name"]
+        assert not found.is_fixable
+        store.set_raw(SAMPLE)  # the next successful read
+        assert issue(hass, entry, "pin_proxy_missing") is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_another_failure_restarts_the_proxy_missing_count(hass, enable_bluetooth):
+    from .test_pin_pairing import issue, pin_store
+
+    entry, _client, ctx = await pin_store(hass, bonded=True)
+    try:
+        store = entry.runtime_data
+        for err in (proxy_gone(), proxy_gone(), HomeAssistantError("other"), proxy_gone(), proxy_gone()):
+            store.mark_unreachable(err)
+        assert issue(hass, entry, "pin_proxy_missing") is None
+        store.mark_unreachable(proxy_gone())
+        assert issue(hass, entry, "pin_proxy_missing") is not None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_the_first_read_counts_every_failed_attempt(hass, enable_bluetooth, monkeypatch):
+    from .test_pin_pairing import issue, pin_store
+
+    entry, _client, ctx = await pin_store(hass, bonded=True)
+    try:
+        store = entry.runtime_data
+        store.raw = None
+        monkeypatch.setattr("custom_components.pvvx_ota.store.FIRST_READ_RETRY", (0, 0))
+        monkeypatch.setattr(type(store), "needs_read", lambda self: True)
+        with patch.object(type(store), "async_initial_read", AsyncMock(side_effect=proxy_gone())):
+            await store.async_first_read()
+        assert issue(hass, entry, "pin_proxy_missing") is not None
+    finally:
+        [c.stop() for c in ctx]
+
+
+# -- S2: the flow does not wait for the firmware lock ---------------------------------------------------------
+
+
+async def test_flow_answers_at_once_while_a_firmware_operation_holds_the_lock(hass: HomeAssistant, enable_bluetooth):
+    r = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_BLUETOOTH}, data=svc())
+    lock = get_shared(hass).lock
+    async with lock:
+        with patch(FLOW_CONN, side_effect=AssertionError("must not connect")):
+            r = await hass.config_entries.flow.async_configure(r["flow_id"], {})
+        assert r["type"] is FlowResultType.FORM and r["errors"] == {"base": "firmware_busy"}
+    with flow_conn(FakeClient()), patch("custom_components.pvvx_ota.async_setup_entry", return_value=True):
+        r = await hass.config_entries.flow.async_configure(r["flow_id"], {})
+    assert r["type"] is FlowResultType.CREATE_ENTRY
+
+
+async def test_pairing_does_not_wait_for_the_firmware_lock_either(hass: HomeAssistant, enable_bluetooth):
+    from custom_components.pvvx_ota.config_flow import PvvxOtaConfigFlow
+
+    flow = PvvxOtaConfigFlow()
+    flow.hass = hass
+    offer = SimpleNamespace(source=PROXY, name="proxy")
+    with patch("custom_components.pvvx_ota.config_flow.pairing_proxies", return_value=[offer]):
+        async with get_shared(hass).lock:
+            outcome = await flow._async_pair_any(MAC, "ATC", 123456)
+    assert outcome.error == "firmware_busy" and outcome.ok is None
+
+
+async def test_a_silent_probe_is_a_plain_unreachable_read_not_a_lost_bond(hass, enable_bluetooth, monkeypatch):
+    from .test_pin_pairing import issue, pin_store
+
+    entry, _client, ctx = await pin_store(hass, bonded=True)
+    try:
+        store = entry.runtime_data
+        err = dev.SilentLinkError("no reply")
+        with patch.object(type(store), "async_initial_read", AsyncMock(side_effect=err)):
+            monkeypatch.setattr("custom_components.pvvx_ota.store.FIRST_READ_RETRY", (0,))
+            monkeypatch.setattr(type(store), "needs_read", lambda self: True)
+            store.raw = None
+            await store.async_first_read()  # retried, then given up quietly
+        assert store._unreachable
+        store.pairing_lost(err)
+        assert issue(hass, entry, "pin_bond_lost") is None and issue(hass, entry, "pin_set") is None
+    finally:
+        [c.stop() for c in ctx]

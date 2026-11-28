@@ -33,6 +33,9 @@ class Shared:
     waiting: list[PvvxUpdateEntity] = field(
         default_factory=list
     )  # update entities queued for the firmware lock, in order
+    silent_probes: dict[str, int] = field(
+        default_factory=dict
+    )  # address -> bonded-link probes in a row that got no reply (a second one pairs again)
     links: dict[str, str] = field(default_factory=dict)  # address -> description of the last connection's proxy
 
 

@@ -533,3 +533,65 @@ async def test_an_unconfirmed_flash_is_logged_as_not_confirmed(
         assert any(r.levelname == "WARNING" and "flash not confirmed" in r.getMessage() for r in caplog.records)
     finally:
         [c.stop() for c in ctx]
+
+
+async def _unconfirmed_entity(hass, client, expected, version=0x59):
+    """A loaded entry whose post-flash check for ``expected`` found no answer: the unconfirmed issue is up."""
+    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0, version=version)
+    entity = hass.data["entity_components"]["update"].get_entity("update.atc_000001")
+
+    async def no_wait(seconds):
+        pass
+
+    with (
+        patch("custom_components.pvvx_ota.update.asyncio.sleep", no_wait),
+        patch.object(type(entity), "_async_read_device", side_effect=HomeAssistantError("out of range")),
+    ):
+        await entity._async_verify_after_flash(expected)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, UNCONFIRMED.format(entry.entry_id))
+    return entry, entity, ctx
+
+
+async def test_unconfirmed_flash_of_the_same_version_clears_when_a_read_shows_it(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    """A reflash of the installed version never changes the version: the read must still clear the issue."""
+    client = FakeClient(cfg=HW0)
+    entry, entity, ctx = await _unconfirmed_entity(hass, client, expected=HW0[1])
+    try:
+        assert entity._version == HW0[1]  # nothing changed
+        entity._store(HW0[1], 0)  # a later successful read, same version
+        assert ir.async_get(hass).async_get_issue(DOMAIN, UNCONFIRMED.format(entry.entry_id)) is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_unconfirmed_flash_to_a_newer_version_clears_on_any_read_at_or_above_it(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    entry, entity, ctx = await _unconfirmed_entity(hass, FakeClient(cfg=HW0), expected=HW0[1] + 1)
+    try:
+        reg = ir.async_get(hass)
+        entity._store(HW0[1], 0)  # still the old one: not applied
+        assert reg.async_get_issue(DOMAIN, UNCONFIRMED.format(entry.entry_id))
+        entity._store(HW0[1] + 2, 0)  # newer than expected
+        assert reg.async_get_issue(DOMAIN, UNCONFIRMED.format(entry.entry_id)) is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_unconfirmed_flash_to_an_older_version_needs_that_exact_version(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    older = HW0[1] - 2
+    entry, entity, ctx = await _unconfirmed_entity(hass, FakeClient(cfg=HW0), expected=older)
+    try:
+        reg = ir.async_get(hass)
+        entity._store(HW0[1], 0)  # the installed version again: at or above, but the flash was not applied
+        assert reg.async_get_issue(DOMAIN, UNCONFIRMED.format(entry.entry_id))
+        entity._store(HW0[1] + 1, 0)
+        assert reg.async_get_issue(DOMAIN, UNCONFIRMED.format(entry.entry_id))
+        entity._store(older, 0)
+        assert reg.async_get_issue(DOMAIN, UNCONFIRMED.format(entry.entry_id)) is None
+    finally:
+        [c.stop() for c in ctx]
