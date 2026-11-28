@@ -17,6 +17,7 @@ rules:
     status: done
   config-flow-test-coverage:
     status: done
+    comment: config_flow.py is covered completely (lines and branches) by tests/test_ha.py, test_config.py and test_pin_pairing.py, including the "not a pvvx sensor" aborts of the Bluetooth, user, reauth and pairing paths.
   dependency-transparency:
     status: done
     comment: No external requirements; Bluetooth comes from HA's bluetooth stack.
@@ -58,17 +59,19 @@ rules:
     comment: Bad input (key format, PIN range, path not allowed or unreadable, low battery without force, missing confirmation) raises ServiceValidationError; failures of the sensor, the link or a proxy raise HomeAssistantError. Both are translated.
   config-entry-unloading:
     status: done
+    comment: Platforms, the Bluetooth listeners and the first-read, poll, catalog and reboot-watch tasks belong to the entry and end with it, and the last-proxy record of the sensor is dropped. The batch-write task is created on hass: it ends by itself within seconds and callers waiting for it are not cancelled mid-write.
   docs-configuration-parameters:
     status: done
   docs-installation-parameters:
     status: done
   entity-unavailable:
     status: done
+    comment: Entities are unavailable until the first successful read, while a flash runs, and when the stored firmware is not a verified pvvx version. The integration never polls, so after a first read a sensor that later goes out of reach keeps its last values as available (a failed read is only logged and raises an error for the action that asked for it); that is a deliberate choice, not live availability tracking.
   integration-owner:
     status: done
   log-when-unavailable:
     status: done
-    comment: A sensor that cannot be read is logged once at INFO (ConfigStore.mark_unreachable) and once when it works again; the entities show unavailable until a read works.
+    comment: A read that fails is logged once at INFO (ConfigStore.mark_unreachable) and once when it works again. Because the entities do not turn unavailable on their own after the first read (see entity-unavailable), the log line is the only sign of an unreachable sensor until a read fails.
   parallel-updates:
     status: done
     comment: PARALLEL_UPDATES = 1 on the Bluetooth platforms (matches the shared lock); the update platform is 0 because its firmware queue needs concurrent calls to queue them.
@@ -84,7 +87,7 @@ rules:
     comment: Every entity is on a device. It is the sensor's BTHome device when there is one (found by the Bluetooth address, see docs/known-limitations.md); otherwise the entities create a device of their own with the Bluetooth connection, name, manufacturer and the installed firmware version.
   diagnostics:
     status: done
-    comment: diagnostics.py gives the entry data and options, the decoded configuration block, the firmware list summary and the last flash; bindkey and PIN fields are redacted.
+    comment: diagnostics.py gives the entry data and options, the decoded configuration block, the firmware list summary and the last flash. Bindkey and PIN fields are redacted; Bluetooth addresses and proxy names are pseudonymised because the dump is posted in public issues.
   discovery:
     status: done
     comment: The manifest has Bluetooth matchers and the config flow has a Bluetooth discovery step that connects once to confirm.
@@ -126,10 +129,10 @@ rules:
     comment: Only the update entity and the Restore previous settings button are enabled by default; every other entity is rarely needed or risky and starts disabled.
   entity-translations:
     status: done
-    comment: Entity names come from translation keys in strings.json (English and German); the update entity uses the device name.
+    comment: Entity names come from translation keys in strings.json (English and German); the update entity uses the device name. Not translated: the English text of the warning attribute of settings entities, the release summary and beta notes of the update entity, and the note in the response of set_encryption.
   exception-translations:
     status: done
-    comment: Every raised error is a translation key under exceptions in strings.json (en and de, tests/test_translations.py checks keys and placeholders).
+    comment: Every raised error is a translation key under exceptions in strings.json (en and de, tests/test_translations.py checks keys and placeholders). Timeout, lost link, slow link and not-a-pvvx-sensor errors have complete translated texts; other sensor errors (reported by the device, pairing, clock, configuration, calibration) and a failed flash put the sensor's English error text after the translated sentence, and so does the flash_failed repair issue.
   icon-translations:
     status: done
     comment: icons.json has an icon for every entity and every action; the two entities whose device class has its own icon (update, restart) use that.
@@ -138,7 +141,7 @@ rules:
     comment: A PIN-bonded sensor can store or change its PIN (reconfigure); other sensors have no settings to reconfigure.
   repair-issues:
     status: done
-    comment: Repair issues for a failed or unconfirmed flash, a PIN set, a lost bond, encryption changed or not restored, advertising type changed, settings reset (fixable: restores the previous settings) or different after a flash.
+    comment: Repair issues for a failed or unconfirmed flash, a flash to a version the sensor could not confirm (firmware_unverified), a PIN set, a lost bond, a paired proxy that no longer sees the sensor (pin_proxy_missing), a failed pairing, an outdated pairing package, encryption changed or not restored, advertising type changed, settings reset (fixable: restores the previous settings) or different after a flash.
   stale-devices:
     status: exempt
     comment: Each config entry is one sensor, a single fixed device that is removed with its entry, so no device can go stale.
@@ -151,4 +154,4 @@ rules:
     comment: The only HTTP client is Home Assistant's shared aiohttp session, passed into FirmwareSource.
   strict-typing:
     status: done
-    comment: mypy strict passes on the package in CI without per-module overrides. A custom integration cannot be listed in core's .strict-typing file or ship a py.typed library, so those two parts do not apply.
+    comment: mypy strict passes on the package in CI without per-module overrides. The GATT client is typed Any in many signatures of store.py, device.py and update.py (the GattClient protocol in ota.py is used only inside ota.py), so strict mode checks little of that code. A custom integration cannot be listed in core's .strict-typing file or ship a py.typed library, so those two parts do not apply.

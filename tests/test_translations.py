@@ -109,3 +109,26 @@ def test_repair_issue_texts_use_only_placeholders_the_call_passes():
         for key, passed in calls.items():
             text = issues[key].get("title", "") + issues[key].get("description", "")
             assert set(re.findall(r"{(\w+)}", text)) <= passed | {"name"}, (path, key)
+
+
+def test_common_ota_errors_have_a_text_of_their_own():
+    from custom_components.pvvx_ota.errors import ota_error
+    from custom_components.pvvx_ota.ota import (
+        NotPvvxError,
+        OtaDeviceError,
+        OtaLinkLost,
+        OtaSlowLink,
+        OtaTimeout,
+    )
+
+    expected = {
+        OtaTimeout: "sensor_timeout",
+        OtaLinkLost: "link_lost",
+        OtaSlowLink: "slow_link",
+        NotPvvxError: "not_pvvx",
+    }
+    for cls, key in expected.items():
+        err = ota_error("ATC", cls("English detail"))
+        assert err.translation_key == key and err.translation_placeholders == {"name": "ATC"}
+    other = ota_error("ATC", OtaDeviceError("status 3"))
+    assert other.translation_key == "sensor_error" and other.translation_placeholders["error"] == "status 3"
