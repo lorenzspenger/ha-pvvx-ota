@@ -51,7 +51,7 @@ from .const import (
     WEAK_RSSI,
 )
 from .device import SilentLinkError, async_connected, describe_link, expected_path
-from .errors import ha_error, validation_error
+from .errors import ha_error, ota_error, validation_error
 from .firmware import (
     HISTORY_PAGE,
     Catalog,
@@ -493,9 +493,9 @@ class PvvxUpdateEntity(UpdateEntity):
                 await self._store_cfg._auto_clock(client, raw)  # in this connection anyway; never fatal
         except PairingRequiredError as err:
             self._store_cfg.pairing_lost(err)
-            raise ha_error("sensor_error", name=self._name, error=err) from err
+            raise ota_error(self._name, err) from err
         except OtaError as err:
-            raise ha_error("sensor_error", name=self._name, error=err) from err
+            raise ota_error(self._name, err) from err
         ver, hw = parse_cfg(raw)
         self._store(ver, hw)
         self._store_cfg.set_raw(raw)

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Timeouts, lost links, too-slow links and "not a pvvx sensor" now show a fully translated error message** (English and German) instead of a translated prefix with the English reason.
 - **A silent probe on a PIN-bonded link no longer starts a new pairing.** The sensor is paired again only after an authentication or encryption error, or after two silent probes in a row.
 - **New repair issue *paired proxy not available* (`pin_proxy_missing`).** It appears after three failed reads in a row because the proxy that holds the bond no longer sees the sensor, points at *Reconfigure*, and clears on the next successful read or a successful reconfigure.
 - **Adding a sensor while a flash or *Update all* runs shows the error "a firmware operation is running" instead of waiting.**

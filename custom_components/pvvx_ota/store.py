@@ -41,7 +41,7 @@ from .const import (
     FIRST_READ_RETRY,
 )
 from .device import SilentLinkError, async_connected
-from .errors import ha_error, validation_error
+from .errors import ha_error, ota_error, validation_error
 from .ota import OtaError, PairingRequiredError, fmt_version, parse_cfg, read_cfg_raw, send_command, write_cfg
 from .pairing import async_forget_bond, async_repair
 from .registry import find_bthome_device
@@ -459,10 +459,10 @@ class ConfigStore:
                 await self._auto_clock(client, raw)
         except PairingRequiredError as err:
             self.pairing_lost(err)
-            raise ha_error("sensor_error", name=self.name, error=err) from err
+            raise ota_error(self.name, err) from err
         except OtaError as err:
             self.mark_unreachable(err)
-            raise ha_error("sensor_error", name=self.name, error=err) from err
+            raise ota_error(self.name, err) from err
         except HomeAssistantError as err:  # not connectable
             self.mark_unreachable(err)
             raise
@@ -520,7 +520,7 @@ class ConfigStore:
                     if clock:
                         await self._auto_clock(client, echoed)  # the last step: a restart would have lost it
             except (OtaError, cfgmod.ConfigError) as err:
-                raise ha_error("sensor_error", name=self.name, error=err) from err
+                raise ota_error(self.name, err) from err
         self.set_raw(echoed)
         if "adv_type" in changes and cfgmod.get(echoed, "adv_type") != 3:
             self._issue("adv_type_changed")
@@ -789,7 +789,7 @@ class ConfigStore:
                 async with async_connected(self.hass, self.address, self.name) as client:
                     yield client
             except (OtaError, cfgmod.ConfigError) as err:
-                raise ha_error("sensor_error", name=self.name, error=err) from err
+                raise ota_error(self.name, err) from err
 
     async def async_set_encryption(
         self, enable: bool, key: str | None = None, keep_key: bool = False
@@ -927,7 +927,7 @@ class ConfigStore:
         # leaving the session drops the link, which is what makes the sensor reboot
         self.quiet_until = asyncio.get_running_loop().time() + REBOOT_QUIET
         _LOGGER.info("%s: reboot requested, the sensor restarts when the link drops", self.name)
-        self.hass.async_create_background_task(self._watch_return(), f"pvvx_ota_reboot_{self.address}")
+        self.entry.async_create_background_task(self.hass, self._watch_return(), f"pvvx_ota_reboot_{self.address}")
 
     async def _watch_return(self) -> None:
         """Log whether the sensor advertises again within REBOOT_WATCH seconds (information only)."""

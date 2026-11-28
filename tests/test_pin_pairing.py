@@ -28,11 +28,11 @@ from custom_components.pvvx_ota.const import (
     PAIRING_PACKAGE_VERSION,
 )
 from custom_components.pvvx_ota.diagnostics import async_get_config_entry_diagnostics
-from custom_components.pvvx_ota.ota import PairingRequiredError
+from custom_components.pvvx_ota.ota import NotPvvxError, PairingRequiredError
 
 from .fake_gatt import FakeClient
 from .test_config import MAC, SAMPLE, patch_catalog, setup_cfg_entry
-from .test_ha import FLOW_CONN, fast_read_cfg, svc
+from .test_ha import FLOW_CONN, fast_read_cfg, flow_conn, svc
 from .test_pin_bond import PROXY, Linked, connects, probe  # noqa: F401
 from .translated import raises_key
 
@@ -1027,3 +1027,38 @@ async def test_set_pin_on_an_unbonded_entry_raises_pin_set_and_clearing_removes_
         forget.assert_not_awaited()
     finally:
         [c.stop() for c in ctx]
+
+
+async def test_flow_aborts_when_the_first_read_has_no_version(hass: HomeAssistant, enable_bluetooth):
+    r = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_BLUETOOTH}, data=svc())
+    with (
+        patch("custom_components.pvvx_ota.config_flow.read_cfg", AsyncMock(return_value=(None, None))),
+        patch(FLOW_CONN, connections(Linked(cfg=SAMPLE))[0].new),
+    ):
+        r = await hass.config_entries.flow.async_configure(r["flow_id"], {})
+    assert r["type"] is FlowResultType.ABORT and r["reason"] == "not_pvvx"
+
+
+async def test_flow_aborts_when_the_sensor_is_not_pvvx_after_pairing(hass: HomeAssistant, enable_bluetooth):
+    r = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_BLUETOOTH}, data=svc())
+    ctx, _ = connections(refused(), Linked(cfg=SAMPLE))
+    reads = [PairingRequiredError("pin"), NotPvvxError("silent")]
+    with (
+        ctx,
+        patch("custom_components.pvvx_ota.config_flow.pairing_proxies", return_value=[PROXY_OFFER]),
+        patch("custom_components.pvvx_ota.config_flow.async_pair", AsyncMock()),
+        patch("custom_components.pvvx_ota.config_flow.read_cfg", AsyncMock(side_effect=reads)),
+    ):
+        r = await hass.config_entries.flow.async_configure(r["flow_id"], {})
+        assert r["step_id"] == "pin"
+        r = await submit(hass, r["flow_id"], SECRET_PIN)
+    assert r["type"] is FlowResultType.ABORT and r["reason"] == "not_pvvx"
+
+
+async def test_user_step_shows_the_error_and_stays_on_the_form(hass: HomeAssistant, enable_bluetooth):
+    with patch("custom_components.pvvx_ota.config_flow.async_discovered_service_info", return_value=[svc()]):
+        r = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        assert r["step_id"] == "user"
+        with flow_conn(None):
+            r = await hass.config_entries.flow.async_configure(r["flow_id"], {CONF_ADDRESS: MAC})
+    assert r["type"] is FlowResultType.FORM and r["step_id"] == "user" and r["errors"] == {"base": "cannot_connect"}

@@ -111,4 +111,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: PvvxConfigEntry) -> Non
 
 async def async_unload_entry(hass: HomeAssistant, entry: PvvxConfigEntry) -> bool:
     """Unload."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        get_shared(hass).links.pop(entry.data.get(CONF_ADDRESS, ""), None)  # the last proxy it was reached through
+    return unloaded
