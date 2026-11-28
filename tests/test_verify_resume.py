@@ -23,7 +23,7 @@ def capture_timers():
             started.append((delay, cb))
         return lambda: None
 
-    return started, patch("custom_components.pvvx_ota.update.async_call_later", fake)
+    return started, patch("custom_components.pvvx_ota.flash_session.async_call_later", fake)
 
 
 async def flash_then_restart(hass, entry):

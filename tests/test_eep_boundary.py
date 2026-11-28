@@ -21,6 +21,15 @@ OLD_KEY = bytes(range(1, 17))
 REPLACED = "encryption_key_replaced"
 
 
+def carried(store):
+    """The key a flash carries across the EEPROM rewrite (memory only); None once the session is over."""
+    return store.session.carry_key if store.session else None
+
+
+def carry_active(store):
+    return bool(store.session and store.session.carry_active)
+
+
 def sensor(version=0x57, crypto=True, flash_to=0x59):
     """A sensor with settings that differ from the defaults it falls back to after an EEPROM erase."""
     client = FakeClient(cfg=bytes([0x55, version]) + HW0[2:])
@@ -57,14 +66,14 @@ async def test_boundary_flash_with_encryption_on_keeps_key_flag_and_settings(
         assert client.cfg[1] == 0x59 and client.bindkey != OLD_KEY  # the sensor made up a new key
         assert client.cfg[2 + 4] == 50 and cfg.get(client.cfg, "adv_crypto") == 0  # and has defaults
         store = entry.runtime_data
-        assert store._carry_key == OLD_KEY  # in memory only
+        assert carried(store) == OLD_KEY  # in memory only
         await entity._async_verify_after_flash()
         assert client.bindkey == OLD_KEY and client.key_writes == 1
         assert cfg.get(client.cfg, "adv_crypto") == 1
         assert cfg.get(client.cfg, "adv_interval") == cfg.get(HW0, "adv_interval") == 16
         assert cfg.get(client.cfg, "smiley") == cfg.get(HW0, "smiley")
         assert issue(hass, entry, REPLACED) is None and issue(hass, entry, "settings_differ_after_flash") is None
-        assert store._carry_key is None and not store._carry_active
+        assert carried(store) is None and not carry_active(store)
         assert "pending_key" not in store.snapshot
         assert "carried over" in caplog.text
         for secret in (OLD_KEY.hex(), str(list(OLD_KEY)), repr(OLD_KEY)):
@@ -158,7 +167,7 @@ async def test_a_failed_write_back_leaves_encryption_off_and_raises_the_issue(
         found = issue(hass, entry, REPLACED)
         assert found and not found.is_fixable and found.translation_key == REPLACED
         assert cfg.get(client.cfg, "adv_interval") == 16  # the settings came back all the same
-        assert entry.runtime_data._carry_key is None
+        assert carried(entry.runtime_data) is None
         assert OLD_KEY.hex() not in caplog.text
     finally:
         [c.stop() for c in ctx]
@@ -224,7 +233,7 @@ async def test_a_flash_on_the_same_side_keeps_todays_behaviour(hass: HomeAssista
     try:
         entity = await flash_and_verify(hass, entry)
         assert client.bindkey == OLD_KEY  # the key survives a flash on the same side
-        assert client.key_reads == 0 and entry.runtime_data._carry_key is None
+        assert client.key_reads == 0 and carried(entry.runtime_data) is None
         assert "pending_key" not in entry.runtime_data.snapshot
         await entity._async_verify_after_flash()
         assert client.key_writes == 0 and cfg.get(client.cfg, "adv_crypto") == 1  # flag only, key untouched
@@ -240,9 +249,9 @@ async def test_a_failed_flash_forgets_the_key(hass: HomeAssistant, enable_blueto
     try:
         from homeassistant.exceptions import HomeAssistantError
 
-        with patch("custom_components.pvvx_ota.update.async_call_later"), pytest.raises(HomeAssistantError):
+        with patch("custom_components.pvvx_ota.flash_session.async_call_later"), pytest.raises(HomeAssistantError):
             await flash(hass)
-        assert entry.runtime_data._carry_key is None and not entry.runtime_data._carry_active
+        assert carried(entry.runtime_data) is None and not carry_active(entry.runtime_data)
     finally:
         [c.stop() for c in ctx]
 
@@ -315,7 +324,7 @@ async def test_flash_to_an_unverified_version_raises_the_issue_and_touches_nothi
         assert client.key_reads == 0 and client.key_writes == 0
         assert cfg.get(client.cfg, "adv_crypto") == 0  # the flag was not switched back on
         store = entry.runtime_data
-        assert store._carry_key is None and "pending_key" not in store.snapshot
+        assert carried(store) is None and "pending_key" not in store.snapshot
         # a read on a verified version clears it (flashed back, or an integration update that verifies it)
         store.set_raw(bytes([0x55, 0x59]) + client.cfg[2:])
         assert issue(hass, entry, "firmware_unverified") is None

@@ -66,7 +66,7 @@ async def setup_two(hass, gate_a):
         p2,
         patch("custom_components.pvvx_ota.update.async_connected", fake),
         patch("custom_components.pvvx_ota.store.async_connected", fake),
-        patch("custom_components.pvvx_ota.update.async_call_later"),
+        patch("custom_components.pvvx_ota.flash_session.async_call_later"),
     )
     for c in ctx:
         c.start()

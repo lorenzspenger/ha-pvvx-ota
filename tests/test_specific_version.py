@@ -24,7 +24,7 @@ from custom_components.pvvx_ota.ota import FirmwareError
 from .fake_gatt import FakeClient
 from .test_config import SAMPLE, UPDATE, fast_batch, setup_cfg_entry  # noqa: F401
 from .test_connection_and_firmware_errors import Resp, Session
-from .test_eep_boundary import OLD_KEY, sensor
+from .test_eep_boundary import OLD_KEY, carried, sensor
 from .test_lifecycle import HW0, capture_verify
 from .test_ota import image
 from .translated import raises_key
@@ -358,13 +358,13 @@ async def test_a_downgrade_across_the_boundary_carries_key_and_settings(
         )  # the old firmware erased the EEPROM and made a new key
         assert client.cfg[2 + 4] == 50 and cfg.get(client.cfg, "adv_crypto") == 0
         store = entry.runtime_data
-        assert store._carry_key == OLD_KEY  # in memory only, until the check has run
+        assert carried(store) == OLD_KEY  # in memory only, until the check has run
         entity = hass.data["entity_components"]["update"].get_entity(UPDATE)
         await entity._async_verify_after_flash()
         assert client.bindkey == OLD_KEY and client.key_writes == 1
         assert cfg.get(client.cfg, "adv_crypto") == 1
         assert cfg.get(client.cfg, "adv_interval") == cfg.get(HW0, "adv_interval") == 16
-        assert store._carry_key is None and "pending_key" not in store.snapshot
+        assert carried(store) is None and "pending_key" not in store.snapshot
         assert OLD_KEY.hex() not in caplog.text and "carried over" in caplog.text
     finally:
         [c.stop() for c in ctx]
@@ -395,6 +395,6 @@ async def test_a_downgrade_inside_one_side_of_the_boundary_does_not_touch_the_ke
         started, timer = capture_verify()
         with patch(PINNED, AsyncMock(return_value=image(900))), timer:
             await install(hass, "5.8")
-        assert entry.runtime_data._carry_key is None and client.key_reads == 0
+        assert carried(entry.runtime_data) is None and client.key_reads == 0
     finally:
         [c.stop() for c in ctx]

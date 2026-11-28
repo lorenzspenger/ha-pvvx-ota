@@ -29,7 +29,7 @@ class Shared:
 
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     source: FirmwareSource | None = None
-    flashing: bool = False  # a flash is running: no configuration writes
+    flashing_address: str | None = None  # the sensor whose image is going over right now (None: no flash runs)
     waiting: list[PvvxUpdateEntity] = field(
         default_factory=list
     )  # update entities queued for the firmware lock, in order
@@ -37,6 +37,25 @@ class Shared:
         default_factory=dict
     )  # address -> bonded-link probes in a row that got no reply (a second one pairs again)
     links: dict[str, str] = field(default_factory=dict)  # address -> description of the last connection's proxy
+
+    @property
+    def flashing(self) -> bool:
+        """Some flash is running: no configuration writes for any sensor (the flash holds the connection slot)."""
+        return self.flashing_address is not None
+
+    def set_flashing(self, hass: HomeAssistant, address: str | None) -> None:
+        """Record which sensor is being flashed (None: none) and notify all stores: availability is per sensor."""
+        if self.flashing_address != address:
+            self.flashing_address = address
+            _flash_state_changed(hass)
+
+
+def _flash_state_changed(hass: HomeAssistant) -> None:
+    """Tell every sensor's store (and through it its entities) that the flash state moved."""
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        store = getattr(entry, "runtime_data", None)
+        if store is not None:
+            store.async_notify()
 
 
 def get_shared(hass: HomeAssistant) -> Shared:
