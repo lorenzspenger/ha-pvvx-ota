@@ -156,6 +156,18 @@
     "sensor_error": {
       "message": "{name}: {error}"
     },
+    "sensor_timeout": {
+      "message": "{name}: Der Sensor hat nicht rechtzeitig geantwortet. Versuche es erneut oder stelle einen Bluetooth-Proxy näher auf."
+    },
+    "link_lost": {
+      "message": "{name}: Die Bluetooth-Verbindung ist während der Übertragung abgebrochen. Der Sensor behält seine alten Einstellungen und seine Firmware; versuche es erneut oder stelle einen Bluetooth-Proxy näher auf."
+    },
+    "slow_link": {
+      "message": "{name}: Die Bluetooth-Verbindung ist für ein Firmware-Update zu langsam. Der Sensor behält seine alte Firmware; stelle einen Bluetooth-Proxy näher auf und versuche es erneut."
+    },
+    "not_pvvx": {
+      "message": "{name}: Dieses Gerät hat nicht wie pvvx-Custom-Firmware geantwortet."
+    },
     "unrecognised_reply": {
       "message": "{name}: Die Antwort auf die Versionsabfrage wurde nicht erkannt. Ist das die pvvx-Firmware?"
     },
@@ -164,6 +176,9 @@
     },
     "file_unreadable": {
       "message": "{path} kann nicht gelesen werden: {error}"
+    },
+    "file_too_big": {
+      "message": "Die Datei {path} ist {size} Bytes groß, mehr als die {limit} Bytes, die ein BLE-OTA-Image haben darf. Für größere Images den Web-Flasher verwenden."
     },
     "battery_low": {
       "message": "{name}: Die Batterie hat {volts} V und liegt unter dem Grenzwert von {limit} V. Wechsle zuerst die Batterie oder rufe die Aktion mit force: true erneut auf."

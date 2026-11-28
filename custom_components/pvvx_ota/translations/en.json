@@ -156,6 +156,18 @@
     "sensor_error": {
       "message": "{name}: {error}"
     },
+    "sensor_timeout": {
+      "message": "{name}: the sensor did not answer in time. Try again or move a Bluetooth proxy closer."
+    },
+    "link_lost": {
+      "message": "{name}: the Bluetooth link was lost during the transfer. The sensor keeps its old settings and firmware; try again or move a Bluetooth proxy closer."
+    },
+    "slow_link": {
+      "message": "{name}: the Bluetooth link is too slow for a firmware update. The sensor keeps its old firmware; move a Bluetooth proxy closer and try again."
+    },
+    "not_pvvx": {
+      "message": "{name}: this device did not answer like pvvx custom firmware."
+    },
     "unrecognised_reply": {
       "message": "{name}: the reply to the version request was not recognised. Is this pvvx custom firmware?"
     },
@@ -164,6 +176,9 @@
     },
     "file_unreadable": {
       "message": "Cannot read {path}: {error}"
+    },
+    "file_too_big": {
+      "message": "The file {path} is {size} bytes, more than the {limit} bytes a BLE OTA image can have. Use the web flasher for bigger images."
     },
     "battery_low": {
       "message": "{name}: the battery is at {volts} V, below the limit of {limit} V. Replace the battery first, or call the action again with force: true."

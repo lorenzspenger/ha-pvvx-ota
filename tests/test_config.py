@@ -451,7 +451,7 @@ async def test_no_write_while_flashing(hass: HomeAssistant, enable_bluetooth, fa
     client = FakeClient(cfg=SAMPLE)
     entry, calls, ctx = await setup_cfg_entry(hass, client)
     try:
-        get_shared(hass).flashing = True
+        get_shared(hass).set_flashing(hass, MAC)
         store = entry.runtime_data
         store.async_notify()  # what _async_flash does
         await hass.async_block_till_done()
@@ -460,7 +460,7 @@ async def test_no_write_while_flashing(hass: HomeAssistant, enable_bluetooth, fa
             await store.async_request({"screen_off": 1})
         assert client.cfg_writes == [] and store.value("screen_off") == 0
     finally:
-        get_shared(hass).flashing = False
+        get_shared(hass).set_flashing(hass, None)
         [c.stop() for c in ctx]
 
 
@@ -515,7 +515,7 @@ async def test_flash_takes_snapshot_and_blocks_config_writes(hass: HomeAssistant
     entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0)
     try:
         client.write_gatt_char = spy
-        with patch("custom_components.pvvx_ota.update.async_call_later"):
+        with patch("custom_components.pvvx_ota.flash_session.async_call_later"):
             await hass.services.async_call(DOMAIN, "flash_latest", {"entity_id": "update.atc_000001"}, blocking=True)
         assert entry.data["cfg_snapshot"]["fields"]["adv_interval"] == 16  # taken before flashing
         assert seen["ota"] and all(seen["ota"])  # config writes were blocked while the image went over
@@ -800,14 +800,14 @@ async def test_reset_refused_on_unverified_firmware_and_while_flashing(
             await store.async_reset_defaults()
         assert client.resets == 0
         client.cfg = SAMPLE
-        get_shared(hass).flashing = True
+        get_shared(hass).set_flashing(hass, MAC)
         with raises_key("flash_running"):
             await store.async_reset_defaults()
         with raises_key("flash_running"):
             await store.async_set_pin(1)
         assert client.resets == 0 and client.pin_writes == 0
     finally:
-        get_shared(hass).flashing = False
+        get_shared(hass).set_flashing(hass, None)
         [c.stop() for c in ctx]
 
 
@@ -981,7 +981,7 @@ async def test_reflash_button_flashes_even_when_up_to_date(hass: HomeAssistant, 
         assert hass.states.get(eid).state != "unavailable"
         assert "1.5 to 3 minutes" in hass.states.get(eid).attributes["warning"]
         client.write_gatt_char = spy
-        with patch("custom_components.pvvx_ota.update.async_call_later"):
+        with patch("custom_components.pvvx_ota.flash_session.async_call_later"):
             await hass.services.async_call("button", "press", {"entity_id": eid}, blocking=True)
         assert seen["ota"] and all(seen["ota"])  # blocks went out while config writes were refused
         assert entry.data["cfg_snapshot"]["fields"]["adv_interval"] == 16  # snapshot before the flash, as with Install
@@ -996,7 +996,7 @@ async def test_reflash_button_unavailable_while_flashing(hass: HomeAssistant, en
     try:
         eid = ent(hass, "button", "reflash_firmware")
         store = entry.runtime_data
-        get_shared(hass).flashing = True
+        get_shared(hass).set_flashing(hass, MAC)
         store.async_notify()
         await hass.async_block_till_done()
         assert hass.states.get(eid).state == "unavailable"
@@ -1005,7 +1005,7 @@ async def test_reflash_button_unavailable_while_flashing(hass: HomeAssistant, en
         except HomeAssistantError:
             pass
         assert client.writes == []
-        get_shared(hass).flashing = False
+        get_shared(hass).set_flashing(hass, None)
         store.async_notify()
         await hass.async_block_till_done()
         assert hass.states.get(eid).state != "unavailable"
@@ -1015,7 +1015,7 @@ async def test_reflash_button_unavailable_while_flashing(hass: HomeAssistant, en
             await hass.async_block_till_done()
             assert hass.states.get(eid).state == "unavailable"
     finally:
-        get_shared(hass).flashing = False
+        get_shared(hass).set_flashing(hass, None)
         [c.stop() for c in ctx]
 
 
@@ -1041,7 +1041,7 @@ async def test_post_flash_check_really_runs_and_updates_the_version(hass: HomeAs
         p2,
         patch("custom_components.pvvx_ota.update.async_connected", fake),
         patch("custom_components.pvvx_ota.store.async_connected", fake),
-        patch("custom_components.pvvx_ota.update.POST_FLASH_DELAY", 0.05),
+        patch("custom_components.pvvx_ota.flash_session.POST_FLASH_DELAY", 0.05),
     ):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
@@ -1063,7 +1063,7 @@ async def test_flash_releases_the_link_and_the_refresh_after_it_stays_quiet(
     client = FakeClient(cfg=SAMPLE[:11] + bytes([0, 0]))
     entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0)
     try:
-        with patch("custom_components.pvvx_ota.update.async_call_later"):
+        with patch("custom_components.pvvx_ota.flash_session.async_call_later"):
             await hass.services.async_call(DOMAIN, "flash_latest", {"entity_id": "update.atc_000001"}, blocking=True)
             assert client.disconnected is True  # dropped right after the end marker, not left open
             n = len(calls)
@@ -1131,7 +1131,7 @@ async def test_reboot_unavailable_and_refused_while_flashing(hass: HomeAssistant
     try:
         eid = ent(hass, "button", "reboot_sensor")
         store = entry.runtime_data
-        get_shared(hass).flashing = True
+        get_shared(hass).set_flashing(hass, MAC)
         store.async_notify()
         await hass.async_block_till_done()
         assert hass.states.get(eid).state == "unavailable"
@@ -1139,7 +1139,7 @@ async def test_reboot_unavailable_and_refused_while_flashing(hass: HomeAssistant
             await store.async_reboot()
         assert client.reboots == 0
     finally:
-        get_shared(hass).flashing = False
+        get_shared(hass).set_flashing(hass, None)
         [c.stop() for c in ctx]
 
 
@@ -1194,7 +1194,7 @@ async def post_flash(hass, crypto_before: bool, has_key: bool, differ: bool = Fa
         p2,
         patch("custom_components.pvvx_ota.update.async_connected", fake),
         patch("custom_components.pvvx_ota.store.async_connected", fake),
-        patch("custom_components.pvvx_ota.update.POST_FLASH_DELAY", 0.05),
+        patch("custom_components.pvvx_ota.flash_session.POST_FLASH_DELAY", 0.05),
     ):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
@@ -1264,7 +1264,7 @@ async def test_diagnostics_content_and_redaction(hass: HomeAssistant, enable_blu
         hass.config_entries.async_update_entry(
             entry, data={**entry.data, "bindkey": secret_key}, options={**entry.options, "pin": secret_pin}
         )
-        with patch("custom_components.pvvx_ota.update.async_call_later"):
+        with patch("custom_components.pvvx_ota.flash_session.async_call_later"):
             await hass.services.async_call(DOMAIN, "flash_latest", {"entity_id": "update.atc_000001"}, blocking=True)
         res = await hass.services.async_call(
             DOMAIN,
@@ -1306,7 +1306,7 @@ async def test_diagnostics_after_failed_flash_records_the_error(hass: HomeAssist
     client = FakeClient(cfg=SAMPLE[:11] + bytes([0, 0]), fail_status_at=3, status_code=2)
     entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0)
     try:
-        with patch("custom_components.pvvx_ota.update.async_call_later"), pytest.raises(HomeAssistantError):
+        with patch("custom_components.pvvx_ota.flash_session.async_call_later"), pytest.raises(HomeAssistantError):
             await hass.services.async_call(DOMAIN, "flash_latest", {"entity_id": "update.atc_000001"}, blocking=True)
         diag = await async_get_config_entry_diagnostics(hass, entry)
         assert diag["last_flash"]["result"].startswith("failed")

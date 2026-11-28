@@ -42,7 +42,8 @@ from .const import (
     FIRST_READ_RETRY,
 )
 from .device import SilentLinkError, async_connected
-from .errors import ha_error, validation_error
+from .errors import ha_error, ota_error, validation_error
+from .flash_session import FlashSession
 from .ota import OtaError, PairingRequiredError, fmt_version, parse_cfg, read_cfg_raw, send_command, write_cfg
 from .pairing import async_forget_bond, async_repair
 from .registry import find_bthome_device
@@ -97,9 +98,7 @@ class ConfigStore:
         self.quiet_until = 0.0  # event-loop time until which nothing else should connect (sensor is rebooting)
         self._unwatch: Callable[[], None] | None = None  # BTHome readings watched while encryption_changed is open
         self.first_read: asyncio.Task[None] | None = None  # the background first read of this setup (tests await it)
-        # the bindkey read before a flash across the 5.7/5.8 EEPROM rewrite: in memory only, for this flash, never stored
-        self._carry_key: bytes | None = None
-        self._carry_active = False  # a flash that may cross the boundary is under way (the key may still be None)
+        self.session: FlashSession | None = None  # the flash (or the post-flash check) of this sensor that is under way
 
     # -- state ---------------------------------------------------------
     @property
@@ -111,8 +110,18 @@ class ConfigStore:
         return cfgmod.capabilities(self.raw, self.hw_id)
 
     @property
+    def flashing(self) -> bool:
+        """This sensor's image is going over right now. (``shared.flashing``: some sensor's is; that blocks every write.)"""
+        return get_shared(self.hass).flashing_address == self.address
+
+    @property
+    def entry_alive(self) -> bool:
+        """The entry is still registered: a removed one is never written to."""
+        return self.hass.config_entries.async_get_entry(self.entry.entry_id) is self.entry
+
+    @property
     def available(self) -> bool:
-        return self.raw is not None and cfgmod.is_verified(self.raw) and not get_shared(self.hass).flashing
+        return self.raw is not None and cfgmod.is_verified(self.raw) and not self.flashing
 
     def value(self, key: str) -> int | None:
         """Current value, with not-yet-written changes shown optimistically."""
@@ -143,7 +152,7 @@ class ConfigStore:
         """Needs only the stored snapshot. The settings are compared when the block is known; before the first read (no
         settings entity enabled) everything is written back, and the write starts from a fresh read anyway."""
         snap = self.snapshot
-        if not snap or get_shared(self.hass).flashing:
+        if not snap or self.flashing:
             return False
         restorable = self._restorable(snap)
         if self.raw is None:
@@ -195,7 +204,7 @@ class ConfigStore:
         """A flash across the EEPROM rewrite was started with encryption on, but nobody carries the key any more (Home Assistant
         restarted before the version check): the sensor now holds a new key and has encryption off."""
         snap = self.snapshot
-        if not snap or not snap.get("pending_key") or self._carry_active or get_shared(self.hass).flashing:
+        if not snap or not snap.get("pending_key") or self.carry_active or self.flashing:
             return
         if not cfgmod.crosses_eep_boundary(snap.get("version"), cfgmod.version_of(raw)):
             return
@@ -245,11 +254,47 @@ class ConfigStore:
         self.hass.config_entries.async_update_entry(self.entry, data={**self.entry.data, CONF_SNAPSHOT: snap})
         _LOGGER.debug("%s: settings snapshot taken: %s", self.name, snap)
 
+    # -- the flash session -------------------------------------------------
+    @property
+    def carry_active(self) -> bool:
+        return self.session is not None and self.session.carry_active
+
+    def begin_flash(self) -> FlashSession:
+        """A flash starts (connection open, block read): remember the settings and open the session that owns the flash state.
+        A session that is still waiting for its check is replaced (its timer stops, its carried key is dropped)."""
+        self.end_session()
+        self.take_snapshot()
+        session = self.session = FlashSession(self)
+        session.transfer_task = asyncio.current_task()
+        session.transferring = True
+        return session
+
+    def open_session(self, expected: int | None = None, unverified: bool = False) -> FlashSession:
+        """The session of a post-flash check that starts without a flash of this run (setup after a restart)."""
+        if self.session is None:
+            self.session = FlashSession(self, expected, unverified)
+        return self.session
+
+    def end_session(self, session: FlashSession | None = None) -> None:
+        """The flash or its check is over: stop its timer and drop everything it held (``session``: only if it is still the
+        current one, a newer flash may have replaced it)."""
+        current = self.session
+        if current is None or (session is not None and session is not current):
+            return
+        current.stop_timer()
+        current.clear_carry()
+        self.session = None
+
+    def clear_carry(self) -> None:
+        if self.session is not None:
+            self.session.clear_carry()
+
     async def prepare_carry(self, client: Any, raw: bytes, target: int | None) -> None:
         """In the connection of a flash, after the snapshot: if the flash crosses the 5.7/5.8 EEPROM rewrite (``target`` None: the
         new version is unknown, so it may) and encryption is on, read the key now, because the new firmware starts with a new
         random one. It only lives in memory until the post-flash check has written it back."""
-        self.clear_carry()
+        session = self.session or self.open_session()
+        session.clear_carry()
         old = cfgmod.version_of(raw)
         if target is not None and not cfgmod.crosses_eep_boundary(old, target):
             return
@@ -263,22 +308,75 @@ class ConfigStore:
                 "%s: this flash crosses the EEPROM rewrite of firmware 5.8, settings and encryption key are carried over",
                 self.name,
             )
+        await self._carry_calib_read(client, raw, session)
         if not cfgmod.is_verified(raw) or cfgmod.get(raw, "adv_crypto") != 1:
             return
-        self._carry_active = True
+        session.carry_active = True
         snap = self.snapshot
         if snap:
             self.hass.config_entries.async_update_entry(
                 self.entry, data={**self.entry.data, CONF_SNAPSHOT: {**snap, "pending_key": True}}
             )
         try:
-            self._carry_key = await require_stored_key(client)
+            session.set_carry_key(await require_stored_key(client))
         except HomeAssistantError, OtaError:
             _LOGGER.warning("%s: the encryption key could not be read before the flash", self.name)
 
-    def clear_carry(self) -> None:
-        self._carry_key = None
-        self._carry_active = False
+    async def _carry_calib_read(self, client: Any, raw: bytes, session: FlashSession) -> None:
+        """Before a flash across the EEPROM rewrite: keep the sensor coefficients in memory if they differ from the factory values
+        (the rewrite resets them). Non-fatal; the raw bytes are never logged above DEBUG."""
+        if not cfgmod.is_verified(raw) or (cfgmod.version_of(raw) or 0) < calibmod.MIN_VERSION:
+            return
+        try:
+            coef = calibmod.parse(await send_command(client, b"\x25", 0x25, timeout=CALIB_TIMEOUT))
+        except (OtaError, calibmod.CalibError) as err:
+            _LOGGER.warning("%s: the sensor coefficients could not be read before the flash: %s", self.name, err)
+            return
+        if coef.known:
+            custom = bool(coef.temp_offset or coef.humi_offset)
+        else:
+            custom = bool(coef.tz or coef.hz)  # chip type not in the factory table: any non-zero zero point is kept
+        if custom:
+            session.set_carry_calib(coef)
+            _LOGGER.info("%s: the temperature/humidity calibration is carried over the flash", self.name)
+        else:
+            _LOGGER.debug("%s: the sensor coefficients are the factory values, nothing to carry over", self.name)
+
+    async def _write_back_calib(self, coef: calibmod.Coef, clock: bool = False) -> None:
+        """Write the carried coefficients to the new firmware (command 0x25) and compare the sensor's reply. Never raises."""
+        version = cfgmod.version_of(self.raw or b"") or 0
+        if version < calibmod.MIN_VERSION:
+            _LOGGER.info(
+                "%s: the new firmware (V%s) has no compatible sensor-coefficient command, the calibration is not carried over",
+                self.name,
+                fmt_version(version),
+            )
+            return
+        try:
+            async with self._session() as client:
+                raw = await read_cfg_raw(client)
+                current = calibmod.parse(await send_command(client, b"\x25", 0x25, timeout=CALIB_TIMEOUT))
+                if current.sensor_type != coef.sensor_type:
+                    _LOGGER.warning(
+                        "%s: the sensor chip type differs after the flash, the calibration is not carried over",
+                        self.name,
+                    )
+                else:
+                    new = calibmod.parse(
+                        await send_command(client, bytes([calibmod.CMD_CFS]) + coef.raw, 0x25, timeout=CALIB_TIMEOUT)
+                    )
+                    self.calib = new
+                    if new.raw == coef.raw:
+                        _LOGGER.info("%s: the temperature/humidity calibration was carried over the flash", self.name)
+                    else:
+                        _LOGGER.warning(
+                            "%s: the sensor did not keep the calibration coefficients after the flash", self.name
+                        )
+                    self.async_notify()
+                if clock:
+                    await self._auto_clock(client, raw)  # the last step of the post-flash work
+        except (HomeAssistantError, OtaError, calibmod.CalibError) as err:
+            _LOGGER.warning("%s: the calibration could not be written back after the flash: %s", self.name, err)
 
     async def _read_calib(self, client: Any, raw: bytes) -> None:
         """Read the sensor coefficients in the connection we have anyway (non-fatal: older firmware lacks them)."""
@@ -462,10 +560,10 @@ class ConfigStore:
                 await self._auto_clock(client, raw)
         except PairingRequiredError as err:
             self.pairing_lost(err)
-            raise ha_error("sensor_error", name=self.name, error=err) from err
+            raise ota_error(self.name, err) from err
         except OtaError as err:
             self.mark_unreachable(err)
-            raise ha_error("sensor_error", name=self.name, error=err) from err
+            raise ota_error(self.name, err) from err
         except HomeAssistantError as err:  # not connectable
             self.mark_unreachable(err)
             raise
@@ -523,7 +621,7 @@ class ConfigStore:
                     if clock:
                         await self._auto_clock(client, echoed)  # the last step: a restart would have lost it
             except (OtaError, cfgmod.ConfigError) as err:
-                raise ha_error("sensor_error", name=self.name, error=err) from err
+                raise ota_error(self.name, err) from err
         self.set_raw(echoed)
         if "adv_type" in changes and cfgmod.get(echoed, "adv_type") != 3:
             self._issue("adv_type_changed")
@@ -582,18 +680,23 @@ class ConfigStore:
         and the settings back. Without the key (not read, or lost with a restart) encryption stays off and a repair issue says so.
         The clock is set in the last connection of the sequence (the writes may restart the sensor)."""
         changes = {k: v for k, v in self._restorable(snap).items() if self.value(k) != v}
+        calib = self.session.take_carry_calib() if self.session is not None else None
         if snap.get("crypto") and cfgmod.get(self.raw or b"", "adv_crypto") == 0:
-            key, self._carry_key = self._carry_key, None
+            key = self.session.take_carry_key() if self.session is not None else None
             if (
                 key is not None
                 and self.entry.options.get(CONF_AUTO_RESTORE_ENCRYPTION, True)
-                and await self._write_back_key(key, clock=not changes)
+                and await self._write_back_key(key, clock=not changes and calib is None)
             ):
                 self._clear_issue("encryption_key_replaced")
                 _LOGGER.info("%s: BTHome encryption and its key carried over the firmware flash", self.name)
             else:
                 _LOGGER.warning("%s: the flash replaced the encryption key and it was not carried over", self.name)
                 self._issue("encryption_key_replaced")
+        if calib is not None:
+            await self._write_back_calib(
+                calib, clock=not changes
+            )  # after the key, before the settings; the clock stays last
         if changes:
             try:
                 self._clock_last = True
@@ -792,7 +895,7 @@ class ConfigStore:
                 async with async_connected(self.hass, self.address, self.name) as client:
                     yield client
             except (OtaError, cfgmod.ConfigError) as err:
-                raise ha_error("sensor_error", name=self.name, error=err) from err
+                raise ota_error(self.name, err) from err
 
     async def async_set_encryption(
         self, enable: bool, key: str | None = None, keep_key: bool = False
@@ -930,7 +1033,7 @@ class ConfigStore:
         # leaving the session drops the link, which is what makes the sensor reboot
         self.quiet_until = asyncio.get_running_loop().time() + REBOOT_QUIET
         _LOGGER.info("%s: reboot requested, the sensor restarts when the link drops", self.name)
-        self.hass.async_create_background_task(self._watch_return(), f"pvvx_ota_reboot_{self.address}")
+        self.entry.async_create_background_task(self.hass, self._watch_return(), f"pvvx_ota_reboot_{self.address}")
 
     async def _watch_return(self) -> None:
         """Log whether the sensor advertises again within REBOOT_WATCH seconds (information only)."""

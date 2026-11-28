@@ -249,7 +249,7 @@ async def test_install_flashes_and_disconnects(hass: HomeAssistant, enable_bluet
     await setup_entry(hass, client)
     client.disconnected = False
     p1, p2 = patch_catalog()
-    with p1, p2, patch_connection(client), patch("custom_components.pvvx_ota.update.POST_FLASH_DELAY", 3600):
+    with p1, p2, patch_connection(client), patch("custom_components.pvvx_ota.flash_session.POST_FLASH_DELAY", 3600):
         await hass.services.async_call("update", "install", {"entity_id": ENTITY}, blocking=True)
     assert client.writes[0] == bytes.fromhex("00ff") and client.writes[-1][:2] == b"\xff"[:0] + b"\x02\xff"
     assert client.disconnected
@@ -298,7 +298,7 @@ async def test_flash_file_board_mismatch_and_allowlist(hass: HomeAssistant, enab
             await hass.services.async_call(DOMAIN, "flash_file", {"entity_id": ENTITY, "path": str(bad)}, blocking=True)
         good = tmp_path / "ATC_v5a.bin"
         good.write_bytes(image())
-        with patch("custom_components.pvvx_ota.update.POST_FLASH_DELAY", 3600):
+        with patch("custom_components.pvvx_ota.flash_session.POST_FLASH_DELAY", 3600):
             await hass.services.async_call(
                 DOMAIN, "flash_file", {"entity_id": ENTITY, "path": str(good)}, blocking=True
             )

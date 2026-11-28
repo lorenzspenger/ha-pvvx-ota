@@ -24,7 +24,7 @@ async def flash(hass):
 
 
 async def failing_flash(hass):
-    with patch("custom_components.pvvx_ota.update.async_call_later"), pytest.raises(HomeAssistantError):
+    with patch("custom_components.pvvx_ota.flash_session.async_call_later"), pytest.raises(HomeAssistantError):
         await flash(hass)
 
 
@@ -69,7 +69,7 @@ async def test_next_successful_flash_clears_the_issue(hass: HomeAssistant, enabl
         await failing_flash(hass)
         assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE)
         client.fail_status_at = None
-        with patch("custom_components.pvvx_ota.update.async_call_later"):
+        with patch("custom_components.pvvx_ota.flash_session.async_call_later"):
             await flash(hass)
         assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE) is None
     finally:
@@ -354,7 +354,7 @@ def capture_verify():
         started.append(cb)
         return lambda: None
 
-    return started, patch("custom_components.pvvx_ota.update.async_call_later", fake)
+    return started, patch("custom_components.pvvx_ota.flash_session.async_call_later", fake)
 
 
 async def test_a_stall_after_the_end_marker_is_a_failed_unverified_flash_not_a_success(
@@ -593,5 +593,23 @@ async def test_unconfirmed_flash_to_an_older_version_needs_that_exact_version(
         assert reg.async_get_issue(DOMAIN, UNCONFIRMED.format(entry.entry_id))
         entity._store(older, 0)
         assert reg.async_get_issue(DOMAIN, UNCONFIRMED.format(entry.entry_id)) is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_unload_drops_the_link_record_and_the_reboot_watch(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    from homeassistant.config_entries import ConfigEntryState
+
+    from custom_components.pvvx_ota import get_shared
+
+    entry, _, ctx = await setup_cfg_entry(hass, FakeClient(cfg=SAMPLE))
+    try:
+        get_shared(hass).links[MAC] = "proxy, RSSI -60"
+        await hass.services.async_call(
+            "button", "press", {"entity_id": ent(hass, "button", "reboot_sensor")}, blocking=True
+        )
+        assert await hass.config_entries.async_unload(entry.entry_id)
+        assert entry.state is ConfigEntryState.NOT_LOADED
+        assert MAC not in get_shared(hass).links
     finally:
         [c.stop() for c in ctx]

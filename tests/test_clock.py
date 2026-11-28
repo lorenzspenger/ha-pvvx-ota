@@ -127,7 +127,7 @@ async def test_reboot_and_flash_connections_sync_too(hass: HomeAssistant, enable
         assert abs(written(-1) - clk.local_epoch(dt_util.now())) <= 5 and client.reboots == 1
         n = len(client.time_writes)
         client.device_time = 0
-        with patch("custom_components.pvvx_ota.update.async_call_later"):
+        with patch("custom_components.pvvx_ota.flash_session.async_call_later"):
             await hass.services.async_call(
                 "pvvx_ota", "flash_latest", {"entity_id": "update.atc_000001"}, blocking=True
             )

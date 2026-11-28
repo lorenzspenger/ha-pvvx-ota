@@ -3,9 +3,16 @@
 ## Unreleased
 
 - **Automatic clock drift calibration.** On sensors with the time-adjust command, the integration measures how far the clock drifted since its clock was last set (at least 48 hours, at least 5 s, the same method as TelinkMiFlasher) and corrects the sensor's clock tick step, at most once a day. It follows the option *Set the clock automatically*; the last measurement is in the diagnostics.
+- **A flash across firmware 5.7/5.8 now also carries over the temperature and humidity calibration (the offsets)** when both firmware versions are 4.8 or newer and the offsets are not the factory values. They were reset by the flash before. After a Home Assistant restart in the window they are still lost.
+- **`flash_file` refuses a file above 128 KiB before reading it** with a translated error, instead of loading the whole file first.
+- **The battery check only uses a voltage reported within the last 6 hours,** prefers the BTHome voltage sensor if the device has several, and ignores unavailable or unknown values. Without a recent voltage it logs a warning with the age of the last report and flashes anyway; a battery percentage is not converted to volts.
+- **Timeouts, lost links, too-slow links and "not a pvvx sensor" now show a fully translated error message** (English and German) instead of a translated prefix with the English reason.
+- **The slow-link abort text now fits sensors without a PIN too.** It says to move a proxy closer to the sensor, and for a PIN sensor to pair it through a closer proxy with *Reconfigure*.
 - **A silent probe on a PIN-bonded link no longer starts a new pairing.** The sensor is paired again only after an authentication or encryption error, or after two silent probes in a row.
 - **New repair issue *paired proxy not available* (`pin_proxy_missing`).** It appears after three failed reads in a row because the proxy that holds the bond no longer sees the sensor, points at *Reconfigure*, and clears on the next successful read or a successful reconfigure.
 - **Adding a sensor while a flash or *Update all* runs shows the error "a firmware operation is running" instead of waiting.**
+- **Unloading, reloading or removing a sensor while its firmware is being sent stops the transfer before the end marker,** so the sensor keeps its old firmware. After the end marker the transfer finishes and the version check runs at the next setup.
+- **While one sensor is flashed, the settings entities, *Restore previous settings* and the buttons of the other sensors show their state correctly** instead of staying stale. Configuration writes are still refused for all sensors during a flash.
 - **The *flash may not have been applied* issue clears on any successful read at or above the expected version,** also when the version did not change. A flash to an older version clears it only when that exact version is read.
 
 ## 0.26.0-beta.6

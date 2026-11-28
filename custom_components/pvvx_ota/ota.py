@@ -263,14 +263,16 @@ async def flash(
     status_every: int = OTA_STATUS_EVERY,
     connected_at: float | None = None,
     context: str = "",
+    on_end_marker: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Send an image. Returns after the end marker; the device then verifies and reboots.
 
-    ``connected_at`` (event-loop time of the connect) and ``context`` (which proxy/RSSI) only feed the timing logs."""
+    ``connected_at`` (event-loop time of the connect) and ``context`` (which proxy/RSSI) only feed the timing logs.
+    ``on_end_marker`` is called right before the end marker is written: up to then a cancelled transfer leaves the old firmware."""
     check_image(fw)
     try:
         async with asyncio.timeout(total_timeout):
-            return await _flash(client, fw, progress, write_timeout, status_every, connected_at, context)
+            return await _flash(client, fw, progress, write_timeout, status_every, connected_at, context, on_end_marker)
     except TimeoutError as err:
         raise OtaTimeout("flash timed out") from err
 
@@ -451,7 +453,7 @@ class _SlowLinkProbe:
             where = f", {context}" if context else ""
             raise OtaSlowLink(
                 f"link too slow ({rate:.1f} blocks/s{where}): the flash was stopped before the end marker to save "
-                "the battery, the sensor keeps its old firmware; try again later or move the sensor's pairing to a closer proxy"
+                "the battery, the sensor keeps its old firmware; try again later or move a proxy closer to the sensor (for a PIN sensor: pair it through a closer proxy with Reconfigure)"
             )
 
 
@@ -510,12 +512,21 @@ class _Timing:
             self.t_mark, self.blocks_mark, self.status_time, self.status_n = now, done, 0.0, 0
 
 
-async def _end_transfer(client: GattClient, marker: bytes, wt: float, total: int, started: float) -> None:
+async def _end_transfer(
+    client: GattClient,
+    marker: bytes,
+    wt: float,
+    total: int,
+    started: float,
+    on_end_marker: Callable[[], None] | None = None,
+) -> None:
     """Every data block has to have reached and been accepted by the device before the end marker (the status read flushes the
     queued writes); on success it then verifies the image and reboots, dropping the link."""
     loop = asyncio.get_running_loop()
     await _status(client, wt, "after the last block")
     _LOGGER.debug("All %s blocks sent and accepted after %.0f s, sending end marker", total, loop.time() - started)
+    if on_end_marker is not None:
+        on_end_marker()
     try:
         await _write(client, marker, False, wt)
     except OtaTimeout:
@@ -534,6 +545,7 @@ async def _flash(
     status_every: int = OTA_STATUS_EVERY,
     connected_at: float | None = None,
     context: str = "",
+    on_end_marker: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     loop = asyncio.get_running_loop()
     t_conn = connected_at if connected_at is not None else loop.time()
@@ -552,7 +564,7 @@ async def _flash(
     timing, probe = _Timing(t_start, total, since_connect), _SlowLinkProbe(t_start)
     for i, packet in ota_packets(fw):
         if i == total:
-            await _end_transfer(client, packet, wt, total, t_start)
+            await _end_transfer(client, packet, wt, total, t_start, on_end_marker)
             break
         await _write(client, packet, DATA_RESPONSE, wt)
         if (i + 1) % status_every:
