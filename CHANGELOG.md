@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.26.0-beta.6
+
+Git tag `v0.26.0-beta.6`, manifest version `0.26.0b6`.
 
 - **Breaking: `pvvx_ota.flash_latest` no longer has the `status_every` field**; the status is read after every 8th block.
 - **New page `docs/stability.md`, "What stays stable from 1.0":** it lists the stable, experimental and not stable interfaces.
