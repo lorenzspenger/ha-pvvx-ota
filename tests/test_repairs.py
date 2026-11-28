@@ -517,3 +517,26 @@ async def test_a_signal_strength_update_does_not_clear_encryption_changed(
         assert issue(hass, entry, "encryption_changed") is None
     finally:
         [c.stop() for c in ctx]
+
+
+@pytest.mark.parametrize("last", [True, False])
+async def test_pairing_package_issue_goes_with_the_last_entry(hass: HomeAssistant, enable_bluetooth, fast_batch, last):
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry, calls, ctx = await setup_cfg_entry(hass, FakeClient(cfg=SAMPLE))
+    try:
+        if not last:
+            MockConfigEntry(domain=DOMAIN, data={}, unique_id="other").add_to_hass(hass)
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            "pairing_package_outdated_proxy",
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="pairing_package_outdated",
+            translation_placeholders={"proxy": "proxy"},
+        )
+        await hass.config_entries.async_remove(entry.entry_id)
+        assert (ir.async_get(hass).async_get_issue(DOMAIN, "pairing_package_outdated_proxy") is None) is last
+    finally:
+        [c.stop() for c in ctx]

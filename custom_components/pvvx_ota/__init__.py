@@ -102,6 +102,10 @@ async def async_remove_entry(hass: HomeAssistant, entry: PvvxConfigEntry) -> Non
         ir.async_delete_issue(hass, DOMAIN, f"flash_failed_{entry.data[CONF_ADDRESS]}")
     if entry.data.get(CONF_PIN_BONDED) and entry.data.get(CONF_BONDED_SCANNER) and entry.data.get(CONF_ADDRESS):
         await async_forget_bond(hass, entry.data[CONF_ADDRESS], entry.data[CONF_BONDED_SCANNER])
+    if not [e for e in hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id]:
+        for domain, issue_id in list(ir.async_get(hass).issues):
+            if domain == DOMAIN and issue_id.startswith("pairing_package_outdated_"):
+                ir.async_delete_issue(hass, DOMAIN, issue_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: PvvxConfigEntry) -> bool:

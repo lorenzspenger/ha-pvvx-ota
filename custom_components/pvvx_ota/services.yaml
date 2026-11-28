@@ -67,7 +67,7 @@ set_pin:
           max: 999999
           mode: box
     confirm:
-      required: true
+      required: false
       default: false
       selector:
         boolean:

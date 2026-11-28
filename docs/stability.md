@@ -45,12 +45,6 @@ All are admin only and target update entities of this integration.
 | `pvvx_ota.set_encryption` | `enable` (boolean, required), `key` (32 hex characters, optional), `keep_key` (boolean, default false) | `encryption` (boolean) and `note` (text); `bindkey` (32 hex characters) when a key was stored |
 | `pvvx_ota.set_pin` (experimental) | `pin` (0 to 999999, 0 = off, required), `confirm` (boolean, must be true) | `pin_set` (boolean); `paired` (boolean) when the entry is bonded to a proxy and a PIN was set |
 
-### Repair issues
-
-* Per entry, id `<key>_<config entry id>`: `adv_type_changed`, `encryption_changed`, `encryption_key_replaced`, `encryption_restore_failed`, `firmware_unverified`, `flash_unconfirmed`, `pin_bond_lost`, `pin_set`, `reset_defaults`, `settings_differ_after_flash`. Only `reset_defaults` can be fixed from the issue (it restores the saved settings).
-* Per sensor: `flash_failed_<MAC>` and `pin_pairing_failed_<MAC>`.
-* Per proxy: `pairing_package_outdated_<proxy name as a slug>`.
-
 ### The ESPHome pairing package
 
 The file `esphome/pvvx_pin_pairing.yaml` is a contract between the integration and a proxy that runs it. Stable here means that a proxy with the package of one 1.x release keeps working with every later 1.x integration, or the repair issue *pairing package out of date* says what to do.
@@ -66,7 +60,7 @@ The PIN feature as a whole is experimental (next section); the package contract 
 
 These can change in a minor release.
 
-* Everything about PIN sensors: the PIN step of the setup flow, `pvvx_ota.set_pin`, the pairing package and its `pvvx_clear_pin` action, the repair issues `pin_bond_lost`, `pin_set`, `pin_pairing_failed_<MAC>` and `pairing_package_outdated_<proxy>`, and the config entry data that belongs to them. See [pin-sensors.md](pin-sensors.md).
+* Everything about PIN sensors: the PIN step of the setup flow, `pvvx_ota.set_pin`, the pairing package and its `pvvx_clear_pin` action, and the config entry data that belongs to them. See [pin-sensors.md](pin-sensors.md).
 * Installing a specific firmware version (the `version` field of `flash_latest` and the version choice of the update entity).
 * The details of how keys and settings are carried over a flash across the 5.7/5.8 boundary (EEPROM layout change).
 
@@ -76,7 +70,7 @@ These can change at any time and need no changelog entry beyond a mention.
 
 * The layout of the diagnostics file.
 * Log messages.
-* The texts of repair issues, descriptions, errors and all translations.
+* The ids and texts of repair issues, descriptions, errors and all translations.
 * Timing values: timeouts, quiet periods, retry waits, poll intervals that are not an option.
 * The firmware version table and which versions are offered or flagged.
 * Module, class and function names inside `custom_components/pvvx_ota`, the config entry data keys (apart from what is listed above as an option), the format of the stored files.
