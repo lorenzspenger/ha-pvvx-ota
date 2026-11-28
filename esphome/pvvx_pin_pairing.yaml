@@ -15,12 +15,6 @@
 #     max_connections: <proxy slots + other ble_clients + 1>
 # (the package sets io_capability and auth_req_mode itself; they affect every pairing this ESP32 does: peripherals
 # without input/output still pair Just Works).
-esphome:
-  on_boot:
-    - text_sensor.template.publish:
-        id: pvvx_package_version
-        state: "2"
-
 esp32_ble:
   io_capability: keyboard_only
   auth_req_mode: sc_mitm_bond
@@ -61,7 +55,10 @@ text_sensor:
     entity_category: diagnostic
     # The integration compares this with the version it expects (PAIRING_PACKAGE_VERSION). Raise it on every change to the
     # actions, their parameters or the result texts.
-    update_interval: never   # published once at boot (see esphome: on_boot below)
+    # Published by the sensor itself (not by esphome: on_boot, which a device's own on_boot can override): within a minute
+    # after boot and then every minute.
+    lambda: 'return {"2"};'
+    update_interval: 60s
   - platform: template
     id: pvvx_pair_result
     name: "pvvx pair result"

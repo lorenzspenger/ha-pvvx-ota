@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The pairing package's *pvvx package version* sensor is published by the sensor itself**, so a proxy with its own `esphome: on_boot` reports it too.
+
 ## 0.27.0-beta.1
 
 Git tag `v0.27.0-beta.1`, manifest version `0.27.0b1`.

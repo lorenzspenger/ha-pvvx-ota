@@ -34,7 +34,7 @@ BATTERY_MAX_AGE = timedelta(
     hours=6
 )  # a battery voltage reported longer ago than this is not trusted for the pre-flash check
 FIRST_READ_STAGGER = 4.0  # seconds between the first reads of the entries when HA starts (proxies are shared)
-FIRST_READ_RETRY = (300.0, 900.0, 3600.0)  # waits before the retries of a failed first read; then the 12 h poll
+FIRST_READ_RETRY = (300.0, 900.0, 3600.0)  # retries of a failed first read; then the version read (3 days)
 CONF_VERSION = "installed_version"
 CONF_HW_ID = "hw_id"
 CONF_SNAPSHOT = "cfg_snapshot"
