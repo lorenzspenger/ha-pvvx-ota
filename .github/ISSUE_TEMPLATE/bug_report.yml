@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for testing the beta. Please do not post PINs or bindkeys. The diagnostics file redacts them, but check the log you paste.
+        Thanks for testing. Please do not post PINs or bindkeys. The diagnostics file redacts them, but check the log you paste.
   - type: input
     id: ha_version
     attributes:
@@ -18,7 +18,7 @@ body:
     attributes:
       label: Integration version
       description: Settings > Devices & services > pvvx Thermometer OTA, or HACS.
-      placeholder: "0.23.0b1"
+      placeholder: "0.26.0b6"
     validations:
       required: true
   - type: input

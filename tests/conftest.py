@@ -27,6 +27,20 @@ def clean_serialx_registry():
 
 
 @pytest.fixture(autouse=True)
+def no_usb_watcher(monkeypatch):
+    """Never start the inotify watcher task HA's `usb` component (a dependency of `bluetooth`) creates.
+
+    It is only cancelled on the stop event, so on a busy runner it can still be pending when the lingering-task check
+    of pytest-homeassistant-custom-component runs. Nothing here needs USB hot-plug events.
+    """
+    try:
+        from aiousbwatcher import AIOUSBWatcher
+    except ImportError:
+        return
+    monkeypatch.setattr(AIOUSBWatcher, "async_start", lambda self: lambda: None)
+
+
+@pytest.fixture(autouse=True)
 def no_grace(monkeypatch):
     """Don't wait after the end marker in tests."""
     monkeypatch.setattr("custom_components.pvvx_ota.ota.END_MARKER_GRACE", 0)
