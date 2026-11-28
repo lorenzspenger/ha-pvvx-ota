@@ -80,3 +80,27 @@ Display boards per version: hw ids come from the sensor, so a board only appears
 - `config.VERSION_EXCLUDED`: `screen_off` below 4.3, `not_day_of_week` below 4.9, `date_ddmm` below 5.4. Everything else uses the same bytes and bits in all of 4.2 .. 5.9 (display flag uses compared per board file, see above). The hardware id was already decoded per version in `ota.parse_cfg` (low nibble below 4.8).
 - Bytes 4-5 are never touched: read-modify-write writes the freshly read block back, so the in-block temperature/humidity offsets of 4.2 .. 4.6 are preserved. They are not offered as entities (verified in sensors.c:203-207 `cfg.temp_offset * 10`, s8 in 0.1 units, but there is no entity for them yet).
 - Calibration (command 0x25, factory tables identical at every tag 4.9 .. 5.5, 4.8 lacks only the CHT8215 table) is only read and offered from 4.8 (`calib.MIN_VERSION`); 4.7 replies with 17 bytes and no chip type, older versions do not know the command.
+
+---
+
+# Clock tick step (command 0x24, time adjust)
+
+Research 2026-11-28, read-only, sources `v4.8` (`#define VERSION 0x48`), `v5.5`, `v5.7`, 5.8 = `9afe074` and 5.9 = `9b65a24`. Line numbers are at 5.9 (`9b65a24`) unless a version is named.
+
+**Mechanism.** The RAM clock advances one second each time the 16 MHz system timer has counted `utc_time_tick_step` ticks: `main_loop()` does `while (clock_time() - wrk.utc_time_sec_tick > wrk.utc_time_tick_step) { wrk.utc_time_sec_tick += wrk.utc_time_tick_step; wrk.utc_time_sec++; ... }` (src/app.c:1010-1012; `utc_time_tick_step` is a `u32`, src/app.h:304, "in 1/16 us for 1 sec"). The nominal value is `CLOCK_16M_SYS_TIMER_CLK_1S`, the Telink SDK constant for one second of the 16 MHz timer (16 000 000; it is not defined in the pvvx repository, only used). A larger step makes the clock slower, a smaller one faster. One tick is 62.5 ns, so 1 ppm is 16 ticks and one tick is 0.0625 ppm.
+
+**Command 0x24** (`CMD_ID_TADJUST`, src/cmd_parser.h:27, handler src/cmd_parser.c:594-602, compiled only with `SERVICE_TIME_ADJUST`):
+
+| | Bytes |
+|---|---|
+| Read request | `24` (nothing else; a payload shorter than 2 bytes does not write) |
+| Write request | `24` + `delta` as signed 16 bit little endian (`s16 delta = dat[1] \| dat[2] << 8`) |
+| Reply (both) | `24` + the current tick step as unsigned 32 bit little endian, 5 bytes in total (`memcpy(&send_buf[1], &wrk.utc_time_tick_step, 4)`, `olen = 4 + 1`) |
+
+- **Asymmetric units.** The write takes a *delta* from nominal, the reply returns the *absolute* step (`wrk.utc_time_tick_step = CLOCK_16M_SYS_TIMER_CLK_1S + delta`, cmd_parser.c:597). So the delta to send is `new_step - 16 000 000`, and the reply must equal `16 000 000 + delta`.
+- **Range.** The `s16` delta limits the step to 16 000 000 - 32 768 ... 16 000 000 + 32 767, i.e. about -2048 ... +2048 ppm. The firmware does not validate anything else (no clamp, no check against the current value).
+- **Default.** Nominal 16 000 000 (delta 0): set when the EEPROM record is missing (app.c:831-835, a `flash_read_cfg` that does not return 4 bytes) and when the settings are reset to defaults (app.c:885).
+- **Persistence.** A write calls `flash_write_cfg(&wrk.utc_time_tick_step, EEP_ID_TIM, 4)` (cmd_parser.c:598); the value is read back at every start (app.c:832). It survives a reboot and a flash between 4.8 ... 5.7 images (`EEP_ID_TIM` = 0x0ADA, `flash_eep.h:28` at `v5.5`). It does **not** survive a flash across the 5.7/5.8 boundary in either direction: the EEPROM rewrite of 5.8 (`flash_eep.h`, enum with `EEP_ID_TIM` at position 13, line 28) makes `flash_supported_eep_ver()` erase all config sectors (flash_eep.c:430-439), so the step is back to nominal. Resetting the settings to defaults (app.c:885) sets it back to nominal as well.
+- **Clock set (0x23).** Does not touch the tick step or the sub-second phase `utc_time_sec_tick` (cmd_parser.c:574-591), so the next second boundary comes at an unknown phase: a measured offset has about +-1 s of quantization.
+- **Versions.** The command exists since 2.4 (`a8c7b89`, "version 2.4"). `v4.8` (cmd_parser.c:563-570, global `utc_time_tick_step`, app.c:685-688) has the same payload and reply. The only difference: the `len` there still includes the command byte, so the condition is `len > 2`, while 5.x decrements `len` first and tests `len > 1` (cmd_parser.c:283, :595); both mean "at least 2 payload bytes", so `24 + s16` works on every version. `v5.5`, `v5.7`, 5.8 and 5.9 handlers are identical (diff only in `wrk.` prefixes).
+- **Boards.** Only where `SERVICE_TIME_ADJUST` (0x1000, app_config.h:95) is in `DEV_SERVICES`. In 5.9 that is every board block except `DEVICE_MJWSD05MMC`/`_EN` (app_config.h:714-729, hw ids 9 and 12) and `DEVICE_LYWSD02MMC` (:2905). On those the command is not compiled in and a 0x24 request gets no `24` notification. The 0x23 reply has the 4 byte `last_set` field exactly when the same flag is compiled in (cmd_parser.c:587-590; `utc_set_time_sec` is a RAM variable, so it is 0 after every restart), which is a safe way to detect the command without sending it.
