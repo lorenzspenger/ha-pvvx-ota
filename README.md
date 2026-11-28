@@ -45,7 +45,6 @@ Home Assistant custom integration that updates and configures [pvvx ATC_MiThermo
 * [How data is updated](docs/data-updates.md), [known limitations](docs/known-limitations.md)
 * [Troubleshooting](docs/troubleshooting.md): diagnostics, logs, slow links, common problems
 * [PIN-protected sensors](docs/pin-sensors.md)
-* [What stays stable from 1.0](docs/stability.md)
 * [Design notes](docs/design-notes.md), [display layouts](docs/display-layouts.md), [firmware versions](docs/version-layouts.md)
 
 Bug reports: [issues](https://github.com/lorenzspenger/ha-pvvx-ota/issues) (please attach the diagnostics download; it has Bluetooth addresses, user-chosen names, PINs and keys redacted).
