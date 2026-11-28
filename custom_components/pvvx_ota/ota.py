@@ -451,7 +451,7 @@ class _SlowLinkProbe:
             where = f", {context}" if context else ""
             raise OtaSlowLink(
                 f"link too slow ({rate:.1f} blocks/s{where}): the flash was stopped before the end marker to save "
-                "the battery, the sensor keeps its old firmware; try again later or move the sensor's pairing to a closer proxy"
+                "the battery, the sensor keeps its old firmware; try again later or move a proxy closer to the sensor (for a PIN sensor: pair it through a closer proxy with Reconfigure)"
             )
 
 

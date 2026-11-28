@@ -1,6 +1,10 @@
 {
   "domain": "pvvx_ota",
   "name": "pvvx Thermometer OTA",
+  "after_dependencies": [
+    "bthome",
+    "esphome"
+  ],
   "bluetooth": [
     {
       "local_name": "ATC_*",
