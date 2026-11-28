@@ -306,6 +306,7 @@ class ConfigStore:
                 "%s: this flash crosses the EEPROM rewrite of firmware 5.8, settings and encryption key are carried over",
                 self.name,
             )
+        await self._carry_calib_read(client, raw, session)
         if not cfgmod.is_verified(raw) or cfgmod.get(raw, "adv_crypto") != 1:
             return
         session.carry_active = True
@@ -318,6 +319,62 @@ class ConfigStore:
             session.set_carry_key(await require_stored_key(client))
         except HomeAssistantError, OtaError:
             _LOGGER.warning("%s: the encryption key could not be read before the flash", self.name)
+
+    async def _carry_calib_read(self, client: Any, raw: bytes, session: FlashSession) -> None:
+        """Before a flash across the EEPROM rewrite: keep the sensor coefficients in memory if they differ from the factory values
+        (the rewrite resets them). Non-fatal; the raw bytes are never logged above DEBUG."""
+        if not cfgmod.is_verified(raw) or (cfgmod.version_of(raw) or 0) < calibmod.MIN_VERSION:
+            return
+        try:
+            coef = calibmod.parse(await send_command(client, b"\x25", 0x25, timeout=CALIB_TIMEOUT))
+        except (OtaError, calibmod.CalibError) as err:
+            _LOGGER.warning("%s: the sensor coefficients could not be read before the flash: %s", self.name, err)
+            return
+        if coef.known:
+            custom = bool(coef.temp_offset or coef.humi_offset)
+        else:
+            custom = bool(coef.tz or coef.hz)  # chip type not in the factory table: any non-zero zero point is kept
+        if custom:
+            session.set_carry_calib(coef)
+            _LOGGER.info("%s: the temperature/humidity calibration is carried over the flash", self.name)
+        else:
+            _LOGGER.debug("%s: the sensor coefficients are the factory values, nothing to carry over", self.name)
+
+    async def _write_back_calib(self, coef: calibmod.Coef, clock: bool = False) -> None:
+        """Write the carried coefficients to the new firmware (command 0x25) and compare the sensor's reply. Never raises."""
+        version = cfgmod.version_of(self.raw or b"") or 0
+        if version < calibmod.MIN_VERSION:
+            _LOGGER.info(
+                "%s: the new firmware (V%s) has no compatible sensor-coefficient command, the calibration is not carried over",
+                self.name,
+                fmt_version(version),
+            )
+            return
+        try:
+            async with self._session() as client:
+                raw = await read_cfg_raw(client)
+                current = calibmod.parse(await send_command(client, b"\x25", 0x25, timeout=CALIB_TIMEOUT))
+                if current.sensor_type != coef.sensor_type:
+                    _LOGGER.warning(
+                        "%s: the sensor chip type differs after the flash, the calibration is not carried over",
+                        self.name,
+                    )
+                else:
+                    new = calibmod.parse(
+                        await send_command(client, bytes([calibmod.CMD_CFS]) + coef.raw, 0x25, timeout=CALIB_TIMEOUT)
+                    )
+                    self.calib = new
+                    if new.raw == coef.raw:
+                        _LOGGER.info("%s: the temperature/humidity calibration was carried over the flash", self.name)
+                    else:
+                        _LOGGER.warning(
+                            "%s: the sensor did not keep the calibration coefficients after the flash", self.name
+                        )
+                    self.async_notify()
+                if clock:
+                    await self._auto_clock(client, raw)  # the last step of the post-flash work
+        except (HomeAssistantError, OtaError, calibmod.CalibError) as err:
+            _LOGGER.warning("%s: the calibration could not be written back after the flash: %s", self.name, err)
 
     async def _read_calib(self, client: Any, raw: bytes) -> None:
         """Read the sensor coefficients in the connection we have anyway (non-fatal: older firmware lacks them)."""
@@ -620,18 +677,23 @@ class ConfigStore:
         and the settings back. Without the key (not read, or lost with a restart) encryption stays off and a repair issue says so.
         The clock is set in the last connection of the sequence (the writes may restart the sensor)."""
         changes = {k: v for k, v in self._restorable(snap).items() if self.value(k) != v}
+        calib = self.session.take_carry_calib() if self.session is not None else None
         if snap.get("crypto") and cfgmod.get(self.raw or b"", "adv_crypto") == 0:
             key = self.session.take_carry_key() if self.session is not None else None
             if (
                 key is not None
                 and self.entry.options.get(CONF_AUTO_RESTORE_ENCRYPTION, True)
-                and await self._write_back_key(key, clock=not changes)
+                and await self._write_back_key(key, clock=not changes and calib is None)
             ):
                 self._clear_issue("encryption_key_replaced")
                 _LOGGER.info("%s: BTHome encryption and its key carried over the firmware flash", self.name)
             else:
                 _LOGGER.warning("%s: the flash replaced the encryption key and it was not carried over", self.name)
                 self._issue("encryption_key_replaced")
+        if calib is not None:
+            await self._write_back_calib(
+                calib, clock=not changes
+            )  # after the key, before the settings; the clock stays last
         if changes:
             try:
                 self._clock_last = True

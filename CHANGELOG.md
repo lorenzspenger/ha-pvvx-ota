@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **A flash across firmware 5.7/5.8 now also carries over the temperature and humidity calibration (the offsets)** when both firmware versions are 4.8 or newer and the offsets are not the factory values. They were reset by the flash before. After a Home Assistant restart in the window they are still lost.
 - **Timeouts, lost links, too-slow links and "not a pvvx sensor" now show a fully translated error message** (English and German) instead of a translated prefix with the English reason.
 - **The slow-link abort text now fits sensors without a PIN too.** It says to move a proxy closer to the sensor, and for a PIN sensor to pair it through a closer proxy with *Reconfigure*.
 - **A silent probe on a PIN-bonded link no longer starts a new pairing.** The sensor is paired again only after an authentication or encryption error, or after two silent probes in a row.

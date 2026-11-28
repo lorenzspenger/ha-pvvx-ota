@@ -72,12 +72,13 @@ async def test_restart_after_a_same_side_flash_resumes_the_check_and_restores_en
 
 
 async def test_restart_after_a_boundary_flash_raises_encryption_key_replaced(
-    hass: HomeAssistant, enable_bluetooth, fast_batch
+    hass: HomeAssistant, enable_bluetooth, fast_batch, caplog
 ):
     client = sensor()
     entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0, version=0x57)
     try:
         started, resumed = await flash_then_restart(hass, entry)
+        assert "cannot carry the sensor coefficients over" in caplog.text
         await run_resumed(hass, entry, resumed)
         assert issue(hass, entry, REPLACED)
         assert cfg.get(client.cfg, "adv_crypto") == 0 and client.key_writes == 0  # no key to write back

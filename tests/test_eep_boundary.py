@@ -2,6 +2,7 @@
 
 import json
 import logging
+import struct
 from unittest.mock import patch
 
 import pytest
@@ -339,5 +340,106 @@ async def test_a_verified_flash_raises_no_unverified_issue(hass: HomeAssistant, 
         entity = await flash_and_verify(hass, entry)
         await entity._async_verify_after_flash()
         assert issue(hass, entry, "firmware_unverified") is None
+    finally:
+        [c.stop() for c in ctx]
+
+
+CUSTOM_COEF = struct.pack("<IIhhIBB", 17500, 10000, -4500 + 150, -200, 0x12345678, 0x70, 1)  # +1.5 degC, -2 %RH
+
+
+async def boundary_flash_with_coef(hass, client, coef=CUSTOM_COEF, **kw):
+    client.coef = coef
+    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0, version=kw.get("version", 0x57))
+    entity = await flash_and_verify(hass, entry)
+    return entry, ctx, entity
+
+
+async def test_boundary_flash_carries_the_calibration_before_the_clock(
+    hass: HomeAssistant, enable_bluetooth, fast_batch, caplog
+):
+    caplog.set_level(logging.INFO)  # the raw reply is only logged at DEBUG by ota.py
+    client = sensor()
+    client.restart_on_write = True
+    entry, ctx, entity = await boundary_flash_with_coef(hass, client)
+    try:
+        assert client.coef == client.default_coef  # the flash reset them
+        assert entry.runtime_data.session.carry_calib is not None
+        await entity._async_verify_after_flash()
+        assert client.coef == CUSTOM_COEF
+        assert client.commands[-5:] == ["key", "cfg", "coef", "cfg", "clock"]
+        assert entry.runtime_data.calib.temp_offset == 1.5 and entry.runtime_data.calib.humi_offset == -2.0
+        assert entry.runtime_data.session is None or entry.runtime_data.session.carry_calib is None
+        assert CUSTOM_COEF[:12].hex() not in caplog.text
+        assert "calibration" not in " ".join(r.getMessage() for r in caplog.records if r.levelname == "WARNING")
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_boundary_flash_carries_the_calibration_without_a_key_or_settings(
+    hass: HomeAssistant, enable_bluetooth, fast_batch
+):
+    client = sensor(crypto=False)
+    client.restart_on_write = True
+    entry, ctx, entity = await boundary_flash_with_coef(hass, client)
+    try:
+        entry.runtime_data.snapshot["fields"] = {}
+        await entity._async_verify_after_flash()
+        assert client.coef == CUSTOM_COEF and client.commands[-2:] == ["coef", "clock"]
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_boundary_flash_skips_factory_coefficients(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    client = sensor()
+    entry, ctx, entity = await boundary_flash_with_coef(hass, client, coef=FakeClient().coef)
+    try:
+        assert entry.runtime_data.session.carry_calib is None
+        await entity._async_verify_after_flash()
+        assert client.coef_writes == []
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_boundary_flash_to_firmware_below_4_8_skips_the_calibration(
+    hass: HomeAssistant, enable_bluetooth, fast_batch, caplog
+):
+    from custom_components.pvvx_ota.firmware import Target
+
+    caplog.set_level(logging.INFO)
+    client = sensor(version=0x59, flash_to=0x47)
+    client.coef = CUSTOM_COEF
+    entry, calls, ctx = await setup_cfg_entry(hass, client, hw=0, version=0x59)
+    try:
+        with patch("custom_components.pvvx_ota.update.choose_target") as choose:
+            choose.return_value = Target(0x47)
+            entity = await flash_and_verify(hass, entry)
+        await entity._async_verify_after_flash()
+        assert client.coef_writes == [] and "not carried over" in caplog.text
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_a_calibration_the_sensor_does_not_keep_logs_a_warning(
+    hass: HomeAssistant, enable_bluetooth, fast_batch, caplog
+):
+    client = sensor()
+    entry, ctx, entity = await boundary_flash_with_coef(hass, client)
+    try:
+        client.coef_ignore_writes = True
+        await entity._async_verify_after_flash()
+        assert "did not keep the calibration" in caplog.text
+        assert len(client.coef_writes) == 1
+        assert cfg.get(client.cfg, "adv_interval") == 16  # the rest still came back
+    finally:
+        [c.stop() for c in ctx]
+
+
+async def test_a_same_side_flash_leaves_the_calibration_alone(hass: HomeAssistant, enable_bluetooth, fast_batch):
+    client = sensor(version=0x58, flash_to=0x59)
+    entry, ctx, entity = await boundary_flash_with_coef(hass, client, version=0x58)
+    try:
+        assert entry.runtime_data.session.carry_calib is None
+        await entity._async_verify_after_flash()
+        assert client.coef == CUSTOM_COEF and client.coef_writes == []
     finally:
         [c.stop() for c in ctx]

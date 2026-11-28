@@ -27,7 +27,7 @@ from homeassistant.helpers.event import async_call_later, async_track_time_inter
 from homeassistant.helpers.service import async_register_platform_entity_service
 from homeassistant.util import dt as dt_util
 
-from .config import VERIFIED_VERSIONS
+from .config import VERIFIED_VERSIONS, crosses_eep_boundary
 from .const import (
     CATALOG_POLL_INTERVAL,
     CATALOG_RETRY,
@@ -916,6 +916,15 @@ class PvvxUpdateEntity(UpdateEntity):
         session = self._store_cfg.open_session(marker.get("expected"), bool(marker.get("unverified")))
         session.start_quiet(delay)
         _LOGGER.info("%s: resuming the post-flash version check in %.0f s", self._name, delay)
+        snap = self._store_cfg.snapshot
+        if marker.get("expected") is None or crosses_eep_boundary(
+            snap.get("version") if snap else None, marker.get("expected")
+        ):
+            _LOGGER.info(
+                "%s: after a restart a flash across the EEPROM rewrite cannot carry the sensor coefficients over: "
+                "check the temperature/humidity offsets",
+                self._name,
+            )
         self._schedule_verify(session.expected, session.unverified, delay)
 
     def _schedule_check(self, session: FlashSession, expected: int | None, unverified: bool = False) -> None:

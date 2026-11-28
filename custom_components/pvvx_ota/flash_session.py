@@ -16,6 +16,7 @@ from homeassistant.core import callback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
+from .calib import Coef
 from .const import CONF_VERIFY_PENDING, POST_FLASH_DELAY
 
 if TYPE_CHECKING:
@@ -31,6 +32,8 @@ class FlashSession:
         self.unverified = unverified  # the flash ended without a clear result
         # the bindkey read before a flash across the 5.7/5.8 EEPROM rewrite: in memory only, for this flash, never stored
         self._carry_key: bytes | None = None
+        # the sensor coefficients read before such a flash (memory only; the flash resets them to the factory values)
+        self._carry_calib: Coef | None = None
         self.carry_active = False  # a flash that may cross the boundary is under way (the key may still be None)
         self.quiet_until = 0.0  # event-loop time until which nothing else should connect (the sensor is rebooting)
         self.transfer_task: asyncio.Task[Any] | None = None  # the task that runs the flash (an unload cancels it)
@@ -59,8 +62,20 @@ class FlashSession:
         key, self._carry_key = self._carry_key, None
         return key
 
+    @property
+    def carry_calib(self) -> Coef | None:
+        return self._carry_calib
+
+    def set_carry_calib(self, coef: Coef) -> None:
+        self._carry_calib = coef
+
+    def take_carry_calib(self) -> Coef | None:
+        coef, self._carry_calib = self._carry_calib, None
+        return coef
+
     def clear_carry(self) -> None:
         self._carry_key = None
+        self._carry_calib = None
         self.carry_active = False
 
     # -- the persisted marker (entry data, no secrets) -------------------

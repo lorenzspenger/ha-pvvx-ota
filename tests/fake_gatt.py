@@ -61,7 +61,9 @@ class FakeClient:
         self.resets = 0
         # SHTC3 factory coefficients: Tk 17500, Hk 10000, Tz -45.00, Hz 0, id, i2c 0x70, chip type 1
         self.coef = struct.pack("<IIhhIBB", 17500, 10000, -4500, 0, 0x12345678, 0x70, 1)
+        self.default_coef = self.coef  # what a flash across the EEPROM rewrite resets the coefficients to
         self.coef_writes: list[bytes] = []
+        self.coef_ignore_writes = False  # a 0x25 write is answered but not kept
         self.time_source = time.time  # controllable: the sensor clock ticks with it
         self._clock_base = 0
         self._clock_set_at = self.time_source()
@@ -171,7 +173,11 @@ class FakeClient:
             if data[:1] == b"\x25":  # sensor coefficients: get (no payload) / set (12 bytes), reply 0x25 + 18 bytes
                 if len(data) > 1:
                     self.coef_writes.append(bytes(data))
-                    self.coef = bytes(data[1:13]) + self.coef[12:]
+                    if not self.coef_ignore_writes:
+                        self.coef = bytes(data[1:13]) + self.coef[12:]
+                    self.commands.append("coef")
+                    if self.restart_on_write:
+                        self.reboot()
                 self._cb(char, bytearray(b"\x25" + self.coef))
                 return
             if data[:1] == b"\x72":  # reboot on disconnect; reply 72 xx
@@ -220,6 +226,7 @@ class FakeClient:
         if (old < 0x58) != (self.flash_to < 0x58):
             body = self.eep_defaults if self.eep_defaults is not None else self.cfg[2:]
             self.bindkey = secrets.token_bytes(16)
+            self.coef = self.default_coef
         else:
             body = self.cfg[2:]
         body = bytearray(body)
