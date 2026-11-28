@@ -231,3 +231,22 @@ async def test_a_wrong_board_prefix_is_flashed_with_the_skip_flag_and_a_warning(
         with patch("custom_components.pvvx_ota.flash_session.POST_FLASH_DELAY", 3600):
             await flash_file(hass, wrong, skip_board_check=True)
     assert client.writes and "WITHOUT checking" in caplog.text and "MHO_C401_v59.bin" in caplog.text
+
+
+async def test_an_oversized_file_is_refused_before_it_is_read(hass, sensor):
+    client, tmp = sensor
+    big = tmp / "ATC_v5a.bin"
+    big.write_bytes(b"\0" * 0x20001)
+    p1, p2 = patch_catalog()
+    with p1, p2, patch_connection(client), patch("pathlib.Path.read_bytes", side_effect=AssertionError("read")):
+        with raises_key("file_too_big", ServiceValidationError, size="131073", limit="131072"):
+            await flash_file(hass, big)
+    assert client.writes == []
+
+
+async def test_a_missing_file_is_unreadable(hass, sensor):
+    client, tmp = sensor
+    p1, p2 = patch_catalog()
+    with p1, p2, patch_connection(client):
+        with raises_key("file_unreadable", ServiceValidationError):
+            await flash_file(hass, tmp / "ATC_v5a.bin")

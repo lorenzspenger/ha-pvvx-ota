@@ -1,5 +1,7 @@
 """Constants for pvvx OTA."""
 
+from datetime import timedelta
+
 DOMAIN = "pvvx_ota"
 RAW_URL = "https://raw.githubusercontent.com/pvvx/ATC_MiThermometer/master/"
 RELEASES_URL = "https://github.com/pvvx/ATC_MiThermometer/releases"
@@ -28,6 +30,9 @@ VERIFY_PENDING_MAX_AGE = (
 STOP_FLASH_WAIT = 10.0  # seconds an unload waits for a cancelled transfer to let go of the connection and the lock
 POST_FLASH_ATTEMPTS = 8  # attempts before the "flash may not have been applied" issue is raised
 MAX_DOWNLOAD = 0x30000
+BATTERY_MAX_AGE = timedelta(
+    hours=6
+)  # a battery voltage reported longer ago than this is not trusted for the pre-flash check
 FIRST_READ_STAGGER = 4.0  # seconds between the first reads of the entries when HA starts (proxies are shared)
 FIRST_READ_RETRY = (300.0, 900.0, 3600.0)  # waits before the retries of a failed first read; then the 12 h poll
 CONF_VERSION = "installed_version"
