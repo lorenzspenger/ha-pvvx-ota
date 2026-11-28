@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- **Automatic clock drift calibration.** On sensors with the time-adjust command, the integration measures how far the clock drifted since its clock was last set (at least 48 hours, at least 5 s, the same method as TelinkMiFlasher) and corrects the sensor's clock tick step, at most once a day. It follows the option *Set the clock automatically*; the last measurement is in the diagnostics.
+- **The automatic clock sync sets the clock much less often on sensors that report when it was last set:** only after a restart, when it is more than 60 s off, or after the tick step was corrected. Other sensors keep the 5 s rule.
+- **Automatic clock drift calibration.** On sensors with the time-adjust command, the integration measures how far the clock drifted since its clock was last set (at least 24 hours, at least 5 s, the same method as TelinkMiFlasher) and corrects the sensor's clock tick step, at most once a day. It follows the option *Set the clock automatically*; the last measurement is in the diagnostics.
 - **A flash across firmware 5.7/5.8 now also carries over the temperature and humidity calibration (the offsets)** when both firmware versions are 4.8 or newer and the offsets are not the factory values. They were reset by the flash before. After a Home Assistant restart in the window they are still lost.
 - **`flash_file` refuses a file above 128 KiB before reading it** with a translated error, instead of loading the whole file first.
 - **The battery check only uses a voltage reported within the last 6 hours,** prefers the BTHome voltage sensor if the device has several, and ignores unavailable or unknown values. Without a recent voltage it logs a warning with the age of the last report and flashes anyway; a battery percentage is not converted to volts.

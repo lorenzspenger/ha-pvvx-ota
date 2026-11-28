@@ -275,11 +275,12 @@ def test_drift_arithmetic():
     for step in (clk.MIN_STEP - 1, clk.MAX_STEP + 1):
         with pytest.raises(clk.ClockError):
             clk.build_step_write(step)
-    # not comparable: restart (0), not a date, no field, younger than 48 h
+    # not comparable: restart (0), not a date, no field, younger than 24 h
     assert clk.measure_drift(clk.DeviceTime(SET0 + day2, 0), SET0 + day2) is None
     assert clk.measure_drift(clk.DeviceTime(5, 0x5FFFFFFF), SET0 + day2) is None
     assert clk.measure_drift(clk.DeviceTime(SET0 + day2, None), SET0 + day2) is None
-    assert clk.measure_drift(reading, SET0 + day2 - 1) is None
+    assert clk.measure_drift(clk.DeviceTime(SET0 + 86400 + 9, SET0), SET0 + 86399) is None  # younger than 24 h
+    assert clk.measure_drift(clk.DeviceTime(SET0 + 86400 + 9, SET0), SET0 + 86400) is not None
     assert clk.measure_drift(clk.DeviceTime(SET0 + day2 + 4, SET0), SET0 + day2).problem == "offset too small"
     assert clk.measure_drift(clk.DeviceTime(SET0 + day2 + 200, SET0), SET0 + day2).problem == "implausible"
     assert clk.measure_drift(clk.DeviceTime(SET0 + day2, SET0), SET0 + day2 + 3600).problem == "implausible"  # DST jump
@@ -338,13 +339,72 @@ async def drift_setup(hass, freezer, options=None, **kw):
     return sim, entry, (*ctx, *started)
 
 
-async def test_no_adjustment_before_48_hours(hass: HomeAssistant, enable_bluetooth, freezer):
-    sim, entry, ctx = await drift_setup(hass, freezer, ppm=500.0)  # 11 s off after 6 h: the clock is set, not tuned
+async def test_nothing_happens_before_24_hours_even_when_the_clock_is_11_s_off(
+    hass: HomeAssistant, enable_bluetooth, freezer
+):
+    sim, entry, ctx = await drift_setup(hass, freezer, ppm=500.0)  # 11 s off after 6 h
     try:
+        n = len(sim.client.time_writes)
         await sim.read(hass, 6)
-        await sim.read(hass, 40)  # 40 h since that set
         assert sim.client.step_commands == [] and sim.client.tick_step == 16_000_000
+        assert len(sim.client.time_writes) == n  # within 60 s: left alone, so the window keeps growing
         assert entry.runtime_data.drift.last is None
+    finally:
+        await finish(hass, entry, ctx)
+
+
+async def test_the_drift_is_measured_after_24_hours_across_connections_in_between(
+    hass: HomeAssistant, enable_bluetooth, freezer
+):
+    sim, entry, ctx = await drift_setup(hass, freezer, ppm=100.0)  # 8.6 s per day
+    try:
+        n = len(sim.client.time_writes)
+        for hours in (8, 8):
+            await sim.read(hass, hours)  # refreshes, version reads: none of them sets the clock
+        assert len(sim.client.time_writes) == n and sim.client.step_commands == []
+        await sim.read(hass, 9)  # 25 h after the set
+        assert (
+            entry.runtime_data.drift.last["result"] == "adjusted"
+            and entry.runtime_data.drift.last["elapsed_s"] == 25 * 3600
+        )
+        assert len(sim.client.time_writes) == n + 1 and sim.client.time_writes[-1] == clk.build_set(sim.target)
+    finally:
+        await finish(hass, entry, ctx)
+
+
+async def test_the_clock_is_set_only_when_never_set_or_far_off(hass: HomeAssistant, enable_bluetooth, freezer):
+    sim, entry, ctx = await drift_setup(hass, freezer, ppm=0.0)
+    try:
+        n = len(sim.client.time_writes)
+        sim.client.device_time = sim.target + 30  # 30 s ahead: left alone
+        await sim.read(hass, 1)
+        assert len(sim.client.time_writes) == n
+        sim.client.device_time = sim.target + 90  # beyond 60 s (a DST switch, a big drift)
+        await sim.read(hass, 1)
+        assert len(sim.client.time_writes) == n + 1
+        sim.client.device_time = sim.target - 1
+        sim.client.last_set = 0  # the sensor restarted: set at once, however close
+        await sim.read(hass, 1)
+        assert len(sim.client.time_writes) == n + 2
+        sim.client.device_time = sim.target - 1
+        sim.client.last_set = 12345  # not a date
+        await sim.read(hass, 1)
+        assert len(sim.client.time_writes) == n + 3
+    finally:
+        await finish(hass, entry, ctx)
+
+
+async def test_a_board_without_last_set_keeps_the_old_5_second_rule(hass: HomeAssistant, enable_bluetooth, freezer):
+    sim, entry, ctx = await drift_setup(hass, freezer, ppm=0.0)
+    try:
+        sim.client.last_set = None  # no TIME_ADJUST
+        n = len(sim.client.time_writes)
+        sim.client.device_time = sim.target + 4
+        await sim.read(hass, 1)
+        assert len(sim.client.time_writes) == n
+        sim.client.device_time = sim.target + 6
+        await sim.read(hass, 1)
+        assert len(sim.client.time_writes) == n + 1 and sim.client.step_commands == []
     finally:
         await finish(hass, entry, ctx)
 

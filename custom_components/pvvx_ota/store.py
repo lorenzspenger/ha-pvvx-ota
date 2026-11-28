@@ -407,8 +407,10 @@ class ConfigStore:
         return datetime.fromtimestamp(last, UTC).strftime("%H:%M:%S")  # the sensor counts local wall-clock seconds
 
     async def _sync_clock(self, client: Any, force: bool = False) -> bool:
-        """Set the sensor's clock to the local time (what TelinkMiFlasher sends, see clock.py); without ``force`` only when
-        it is more than AUTO_TOLERANCE seconds off. Returns whether a write happened. Raises OtaError/ClockError."""
+        """Set the sensor's clock to the local time (what TelinkMiFlasher sends, see clock.py). Without ``force``: on a board that
+        reports the last-set time only when the sensor was restarted or never set, when it is more than AUTO_SET_THRESHOLD
+        off, or right after the tick step was corrected (the drift measurement needs long windows between sets); on other
+        boards when it is more than AUTO_TOLERANCE off. Returns whether a write happened. Raises OtaError/ClockError."""
         target = clockmod.local_epoch(dt_util.now())
         reading = clockmod.parse(await send_command(client, b"\x23", 0x23, timeout=CLOCK_TIMEOUT))
         before = reading.current
@@ -423,7 +425,11 @@ class ConfigStore:
         }
         _LOGGER.debug("%s: clock read: sensor time %s, last set %s, offset %s s", self.name, before, last_text, diff)
         retuned = self.auto_clock_sync and await self.drift.check(client, reading, target, dt_util.utcnow(), self.name)
-        if not force and not retuned and abs(diff) <= clockmod.AUTO_TOLERANCE:
+        if reading.last_set is None:
+            due = abs(diff) > clockmod.AUTO_TOLERANCE
+        else:
+            due = retuned or clockmod.never_set(reading) or abs(diff) > clockmod.AUTO_SET_THRESHOLD
+        if not force and not due:
             _LOGGER.debug("%s: clock is %s s off, left alone", self.name, diff)
             return False
         after = clockmod.parse(

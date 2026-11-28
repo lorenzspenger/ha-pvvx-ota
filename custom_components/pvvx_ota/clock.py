@@ -21,7 +21,12 @@ from dataclasses import dataclass
 from datetime import datetime
 
 CMD_TIME = 0x23
-AUTO_TOLERANCE = 5  # seconds: the automatic sync leaves a clock that is this close alone
+AUTO_TOLERANCE = (
+    5  # seconds: on boards that do not report ``last_set`` the automatic sync leaves a clock this close alone
+)
+AUTO_SET_THRESHOLD = (
+    60  # seconds: on boards that do, it sets the clock only beyond this (DST switch, big drift) or when never set
+)
 
 CMD_TADJUST = 0x24
 NOMINAL_STEP = 16_000_000  # ticks per clock second (Telink CLOCK_16M_SYS_TIMER_CLK_1S)
@@ -29,7 +34,7 @@ MIN_STEP = NOMINAL_STEP - 32768  # the write takes an int16 delta: about -2048 p
 MAX_STEP = NOMINAL_STEP + 32767  # ... +2048 ppm
 TICKS_PER_PPM = NOMINAL_STEP // 1_000_000
 LAST_SET_MIN = 0x60000000  # a ``last_set`` below this is not a date (TelinkMiFlasher's test)
-DRIFT_MIN_ELAPSED = 48 * 3600.0  # seconds between the set and the read that measures the drift (TelinkMiFlasher: 3 h)
+DRIFT_MIN_ELAPSED = 24 * 3600.0  # seconds between the set and the read that measures the drift (TelinkMiFlasher: 3 h)
 DRIFT_MIN_OFFSET = 5.0  # seconds: a smaller offset is within the quantization and timing noise of both clocks
 DRIFT_MAX_PPM = 500.0  # a crystal does not drift more: such a measurement is a restart, a manual set or a broken link
 DRIFT_MIN_INTERVAL = 24 * 3600.0  # at most one adjustment attempt per sensor and day
@@ -125,3 +130,8 @@ def measure_drift(reading: DeviceTime, host_now: int) -> Drift | None:
 def corrected_step(old: int, drift: Drift) -> int:
     """The step that would have kept the clock right: the clock rate is proportional to 1/step."""
     return clamp_step(round(old * (1 + drift.offset_s / drift.elapsed_s)))
+
+
+def never_set(reading: DeviceTime) -> bool:
+    """The board reports a last-set time and it is no date: the sensor restarted or was never set."""
+    return reading.last_set is not None and reading.last_set <= LAST_SET_MIN
